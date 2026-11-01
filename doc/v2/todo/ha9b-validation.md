@@ -7,6 +7,10 @@ Branche `v2/HA9B-history-refusal-events`, base HA10 documentaire
 `426ae9dc4f6f4ea60923dc5e797f86a7f4cdfbb5`.
 Complément `HA9-HISTORY-REFUSALS/1` :
 `doc/integration/timeline-ha9b-history-refusals-api.md`.
+Référence fonctionnelle vérifiée : `6d19da1f75af53e902b86164ce4cfb8003cef465`.
+[PR #132](https://github.com/Kazo-ca/JsAnimationTimeline/pull/132), ouverte vers
+`v2/base`, non fusionnée. Prérequis : PR #128/#129/#130/#131.
+Les ajouts documentaires suivants ne changent pas les binaires vérifiés.
 
 ## Résultat
 

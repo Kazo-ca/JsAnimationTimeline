@@ -5,6 +5,8 @@ Complément `HA9-HISTORY-REFUSALS/1`, **corrigé et vérifié localement** sur
 `v2/HA9B-history-refusal-events`. Il restaure un comportement du canal public
 existant `command:refused` ; il n'ajoute pas une seconde pile d'historique.
 Les checkpoints HA9 et HA10 précédents restent distincts et immuables.
+Référence fonctionnelle : `6d19da1f75af53e902b86164ce4cfb8003cef465`,
+[PR #132](https://github.com/Kazo-ca/JsAnimationTimeline/pull/132), non fusionnée.
 
 ## Comportement attendu
 

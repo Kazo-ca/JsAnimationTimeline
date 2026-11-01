@@ -43,6 +43,9 @@ Le suivi consommateur HA9B concerne le motif public manquant de certains refus
 d'undo/redo avec le renderer hôte. Voir `timeline-ha9b-history-refusals-api.md`
 et `doc/v2/todo/ha9-history-refusals.md` pour son état ; il ne faut pas le déduire
 des archives HA9 ou HA10 déjà remises.
+Référence HA9B vérifiée : `6d19da1f75af53e902b86164ce4cfb8003cef465`,
+[PR #132](https://github.com/Kazo-ca/JsAnimationTimeline/pull/132), non fusionnée.
+Archives et résultats : `doc/v2/todo/ha9b-validation.md`.
 
 Ces changements ne désignent pas une nouvelle version publiée. Le numéro de
 version des archives locales ne suffit pas à identifier ce code. Utiliser le
