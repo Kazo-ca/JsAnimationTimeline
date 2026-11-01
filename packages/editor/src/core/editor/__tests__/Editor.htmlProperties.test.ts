@@ -37,6 +37,28 @@ function setup(context?: IHtmlAnimationContext) {
 }
 afterEach(() => { editors.splice(0).forEach((editor) => editor.destroy()); cleanBody(); });
 
+it('captures a resolved specific target through the atomic candidate instead of its raw initial value', () => {
+  const { editor, elements, seek } = setup();
+  seek(20);
+  expect(editor.transactions.execute({ label: 'Capture resolved opacity', properties: [
+    { kind: 'capture', layerId: 'specific', property: 'opacity', frame: 20 }
+  ] })).toMatchObject({ status: 'changed' });
+  expect(layerOf(editor.document, 'specific').propertyTimelines?.opacity.keys[0]).toEqual({ frame: 20, value: number(.8) });
+  expect(elements[1].style.opacity).toBe('0.8');
+  expect(editor.undo()).toBe(true); expect(editor.redo()).toBe(true);
+  expect(elements[1].style.opacity).toBe('0.8');
+});
+
+it('refuses an atomic group capture when its resolved members show different values', () => {
+  const { editor, seek } = setup();
+  seek(20);
+  const before = editor.document;
+  expect(editor.transactions.execute({ label: 'Capture mixed group', properties: [
+    { kind: 'capture', layerId: 'group', property: 'opacity', frame: 20 }
+  ] })).toMatchObject({ status: 'refused' });
+  expect(editor.document).toBe(before); expect(editor.canUndo).toBe(false);
+});
+
 it('captures the case 59 displayed value and preserves the complete rendered range through undo/redo', () => {
   const { editor, elements, stage, seek } = setup();
   const before = editor.document;

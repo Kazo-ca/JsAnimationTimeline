@@ -21,6 +21,8 @@ import type { CommandStack } from '../commands/CommandStack';
 import type { EventBus } from '../events/EventBus';
 import type { IEditorPlayback } from '../playback/types';
 import type { IEditorPropertyTimelines } from '../editor/propertyTimelineTypes';
+import type { IEditorTransactions } from '../editor/transactionTypes';
+import { unavailableEditorTransactions } from '../editor/createEditorTransactions';
 import type { SlotRegistry } from '../plugin/SlotRegistry';
 import type { IEditorStage } from '../stage/types';
 import type { Store } from '../store/Store';
@@ -36,6 +38,7 @@ export interface IEditorContextSources {
   readonly store: Store;
   readonly commands: CommandStack;
   readonly propertyTimelines: IEditorPropertyTimelines;
+  readonly transactions?: IEditorTransactions;
   readonly slots: SlotRegistry;
   readonly services: IEditorServices;
   readonly container: HTMLElement;
@@ -138,6 +141,7 @@ export function createEditorContext(sources: IEditorContextSources): IEditorCont
     },
     commands,
     propertyTimelines: sources.propertyTimelines,
+    transactions: sources.transactions ?? unavailableEditorTransactions(assertActive),
     slots: sources.slots,
     container: sources.container,
     playback: sources.playback,

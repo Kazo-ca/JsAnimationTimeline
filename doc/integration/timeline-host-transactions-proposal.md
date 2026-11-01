@@ -1,8 +1,8 @@
 <!-- doc/integration/timeline-host-transactions-proposal.md -->
 # Proposition — Transaction du document, du contexte HTML et des effets hôte
 
-**Proposition technique uniquement. Aucune API ci-dessous n'est implémentée
-dans HA7.** Le Designer r3 demande une seule annulation pour une opération qui
+**Proposition historique, non implémentée dans HA7. Le contrat HA8 livré et
+vérifié est décrit dans `timeline-ha8-api.md`.** Le Designer r3 demande une seule annulation pour une opération qui
 ajoute structure HTML, objet et clés, avec refus sans écriture partielle.
 Les essais d'un dégradé déjà défini peuvent avancer indépendamment.
 
@@ -114,6 +114,6 @@ ne peut être absolue pour des callbacks hôte arbitraires.
 
 Aucune décision fonctionnelle supplémentaire n'est nécessaire pour cette note.
 L'utilisateur a autorisé l'implémentation de ce lot distinct, HA8, après la
-préparation de HA7. Sa validation et son contrat final restent à livrer ; aucune
-disponibilité de cette API ne doit être annoncée au Designer. Le refus synchrone
+préparation de HA7. Sa validation et son contrat final sont maintenant consignés
+dans `timeline-ha8-api.md` et `doc/v2/todo/ha8-validation.md`. Le refus synchrone
 pendant notification a été explicitement confirmé (question 2, choix A).

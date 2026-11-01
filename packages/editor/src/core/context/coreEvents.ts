@@ -17,6 +17,7 @@ const CORE_EVENTS: Readonly<Record<CoreEventName, true>> = Object.freeze({
   'document:loaded': true,
   'document:changed': true,
   'property:changed': true,
+  'transaction:changed': true,
   'command:before': true,
   'command:refused': true,
   'history:changed': true,

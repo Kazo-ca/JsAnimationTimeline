@@ -18,6 +18,7 @@ import type { FrameListener, IEditorPlayback, IFrameSample } from '../playback/t
 import type { EditorStageOption, IEditorStage, StageErrorHandler } from '../stage/types';
 import type { StoreWarningHandler } from '../store/Store';
 import type { IEditorPropertyTimelines } from './propertyTimelineTypes';
+import type { IEditorTransactions } from './transactionTypes';
 
 /** Options for a property edit. */
 export interface SetPropertyOptions {
@@ -110,6 +111,7 @@ export interface IEditor {
   readonly stage: IEditorStage;
   /** Typed property tracks, explicit transitions and shared undo transactions. */
   readonly propertyTimelines: IEditorPropertyTimelines;
+  readonly transactions: IEditorTransactions;
 
   /** S'abonne à un événement de l'éditeur ; retourne la fonction de désabonnement. */
   on<K extends EditorEventName>(name: K, handler: EventHandler<TimelineEventMap[K]>): () => void;

@@ -41,7 +41,7 @@ export function createPropertyTimelines(parts: Pick<IEditorParts,
         catch { throw new PropertyOperationError('Les propriétés de la cible sont indisponibles.'); }
       }
     }, current);
-    let reason: string | undefined;
+    let reason = commands.mutationRefusalReason;
     const off = bus.on('command:refused', (event) => {
       if (event.command === command) reason = event.reason;
     });

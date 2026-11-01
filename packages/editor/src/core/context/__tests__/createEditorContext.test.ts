@@ -196,7 +196,7 @@ describe('createEditorContext facades', () => {
     expect('load' in ctx.commands).toBe(false);
     expect('clear' in ctx.services).toBe(false);
     expect(Object.keys(ctx).sort()).toEqual([
-      'commands', 'container', 'document', 'events', 'playback', 'propertyTimelines', 'registry', 'services', 'slots', 'stage'
+      'commands', 'container', 'document', 'events', 'playback', 'propertyTimelines', 'registry', 'services', 'slots', 'stage', 'transactions'
     ]);
   });
 

@@ -66,6 +66,8 @@ import { CommandRefusedError } from './CommandRefusedError';
 import { CompositeCommand } from './CompositeCommand';
 import type { DocumentChangeCause, IDocumentWriter } from './documentChange';
 import type { ICommand } from './ICommand';
+import { hasHostEntry, isHistoryGroup, isHostEntry } from './atomicHistory';
+import type { HistoryEntry, IHostHistoryEntry, IAtomicHistoryCoordinator } from './atomicHistory';
 
 /** Options de la pile de commandes. */
 export interface CommandStackOptions {
@@ -82,7 +84,7 @@ interface IGroupState {
   readonly label: string;
   /** Document avant `beginGroup`, restauré par `cancelGroup`. */
   readonly snapshot: ITimelineDocument;
-  readonly commands: readonly ICommand[];
+  readonly commands: readonly HistoryEntry[];
 }
 
 function resolveLimit(options: CommandStackOptions): number {
@@ -95,15 +97,16 @@ function resolveLimit(options: CommandStackOptions): number {
   return limit;
 }
 
-function lastOf(entries: readonly ICommand[]): ICommand | undefined {
+function lastOf(entries: readonly HistoryEntry[]): HistoryEntry | undefined {
   return entries.length === 0 ? undefined : entries[entries.length - 1];
 }
 
 /** Historique annuler / rétablir et exécution des commandes. */
 export class CommandStack {
   private readonly limit: number;
-  private undoEntries: readonly ICommand[] = [];
-  private redoEntries: readonly ICommand[] = [];
+  private undoEntries: readonly HistoryEntry[] = [];
+  private redoEntries: readonly HistoryEntry[] = [];
+  private atomic: IAtomicHistoryCoordinator | undefined;
   private group: IGroupState | undefined;
   private generation = 0;
   private lifecycleGeneration = 0;
@@ -122,12 +125,12 @@ export class CommandStack {
 
   /** Vrai si `undo()` est possible (toujours faux pendant un regroupement). */
   get canUndo(): boolean {
-    return !this.isGrouping && this.undoEntries.length > 0;
+    return !this.atomic?.faulted && !this.isGrouping && this.undoEntries.length > 0;
   }
 
   /** Vrai si `redo()` est possible (toujours faux pendant un regroupement). */
   get canRedo(): boolean {
-    return !this.isGrouping && this.redoEntries.length > 0;
+    return !this.atomic?.faulted && !this.isGrouping && this.redoEntries.length > 0;
   }
 
   /** Libellé de la commande que `undo()` annulerait (`undefined` pendant un regroupement). */
@@ -150,8 +153,16 @@ export class CommandStack {
     return this.group?.token;
   }
 
+  /** @internal Synchronous status for result facades while observer events are deferred. */
+  get mutationRefusalReason(): string | undefined {
+    this.atomic?.assertHealthy();
+    return this.atomic?.refusal();
+  }
+
   /** Exécute `command` ; retourne `true` si le document a changé. */
   execute(command: ICommand): boolean {
+    const refusal = this.mutationRefusalReason;
+    if (refusal !== undefined) { this.bus.emit('command:refused', { command, reason: refusal }); return false; }
     const lifecycleGeneration = this.lifecycleGeneration;
     if (!this.bus.emitCancellable('command:before', { command, document: this.writer.document })) {
       this.bus.emit('command:refused', { command, reason: CANCELLED_REASON });
@@ -178,9 +189,15 @@ export class CommandStack {
 
   /** Annule la dernière entrée ; retourne `false` s'il n'y en a pas ou si elle est refusée. */
   undo(): boolean {
+    this.atomic?.assertHealthy();
+    if (this.atomic?.refusal() !== undefined) return false;
     this.assertNotGrouping('undo');
     const command = lastOf(this.undoEntries);
     if (command === undefined) return false;
+    if (hasHostEntry(command)) return this.atomic!.replay(command, 'undo', () => {
+      this.generation++; this.undoEntries = this.undoEntries.slice(0, -1); this.redoEntries = [...this.redoEntries, command];
+    });
+    if (isHostEntry(command) || isHistoryGroup(command)) return false;
     const next = this.apply(command, () => command.undo(this.writer.document));
     if (next === undefined) return false;
     this.generation++;
@@ -192,9 +209,15 @@ export class CommandStack {
 
   /** Rétablit la dernière entrée annulée ; retourne `false` s'il n'y en a pas ou si elle est refusée. */
   redo(): boolean {
+    this.atomic?.assertHealthy();
+    if (this.atomic?.refusal() !== undefined) return false;
     this.assertNotGrouping('redo');
     const command = lastOf(this.redoEntries);
     if (command === undefined) return false;
+    if (hasHostEntry(command)) return this.atomic!.replay(command, 'redo', () => {
+      this.generation++; this.redoEntries = this.redoEntries.slice(0, -1); this.undoEntries = this.capped([...this.undoEntries, command]);
+    });
+    if (isHostEntry(command) || isHistoryGroup(command)) return false;
     const next = this.apply(command, () => command.do(this.writer.document));
     if (next === undefined) return false;
     this.generation++;
@@ -212,6 +235,7 @@ export class CommandStack {
 
   /** Vide l'historique, abandonne un regroupement en cours et émet `history:changed`. */
   clear(): void {
+    this.assertMutable();
     this.generation++;
     this.undoEntries = [];
     this.redoEntries = [];
@@ -221,6 +245,7 @@ export class CommandStack {
 
   /** Démarre un regroupement (émet `history:changed`) ; lève si un regroupement est déjà en cours. */
   beginGroup(label: string): object {
+    this.assertMutable();
     if (this.group !== undefined) {
       throw new Error(
         `CommandStack : impossible de démarrer le regroupement « ${label} », « ${this.group.label} » est déjà en cours.`
@@ -238,9 +263,19 @@ export class CommandStack {
    * entrée a été enregistrée.
    */
   endGroup(): boolean {
+    this.assertMutable();
+    const active = this.group;
+    if (active !== undefined && active.commands.some(hasHostEntry)) {
+      this.atomic!.finishGroup(active.token, active.label, () => {
+        this.takeGroup('endGroup');
+        this.record({ kind: 'group', label: active.label, entries: active.commands });
+        this.emitHistoryChanged();
+      });
+      return true;
+    }
     const group = this.takeGroup('endGroup');
     const pushed = group.commands.length > 0;
-    if (pushed) this.record(new CompositeCommand(group.label, group.commands));
+    if (pushed) this.record(new CompositeCommand(group.label, group.commands as readonly ICommand[]));
     this.emitHistoryChanged();
     return pushed;
   }
@@ -251,6 +286,15 @@ export class CommandStack {
    * `history:changed`.
    */
   cancelGroup(): void {
+    this.assertMutable();
+    const active = this.group;
+    if (active !== undefined && active.commands.some(hasHostEntry)) {
+      const accepted = this.atomic!.replay({ kind: 'group', label: active.label, entries: active.commands }, 'cancel', () => {
+        this.takeGroup('cancelGroup');
+      }, active.token);
+      if (!accepted) throw new Error('Le regroupement n’a pas pu être compensé.');
+      return;
+    }
     const group = this.takeGroup('cancelGroup');
     this.commitAndNotify(group.snapshot, 'group-cancel', group.label, group.token);
   }
@@ -275,13 +319,13 @@ export class CommandStack {
   }
 
   /** Ajoute une entrée annulable (plafonnée) et vide la pile « rétablir ». */
-  private record(command: ICommand): void {
+  private record(command: HistoryEntry): void {
     this.generation++;
     this.undoEntries = this.capped([...this.undoEntries, command]);
     this.redoEntries = [];
   }
 
-  private capped(entries: readonly ICommand[]): readonly ICommand[] {
+  private capped(entries: readonly HistoryEntry[]): readonly HistoryEntry[] {
     return entries.length > this.limit ? entries.slice(entries.length - this.limit) : entries;
   }
 
@@ -316,5 +360,25 @@ export class CommandStack {
         `CommandStack : « ${operation} » est interdit pendant le regroupement « ${this.group.label} » ; appelez endGroup ou cancelGroup d'abord.`
       );
     }
+  }
+
+  /** @internal Installs the one coordinator on the existing history. */
+  attachAtomic(coordinator: IAtomicHistoryCoordinator): void { this.atomic = coordinator; }
+  /** @internal Registers an already prepared atomic entry before observers are published. */
+  recordAtomic(entry: IHostHistoryEntry): void {
+    if (this.group === undefined) this.record(entry);
+    else { this.generation++; this.group = { ...this.group, commands: [...this.group.commands, entry] }; }
+  }
+  /** @internal Atomic publication owns the notification boundary. */
+  notifyAtomicHistory(): void { this.emitHistoryChanged(); }
+  /** @internal Load/destroy must compensate active host participants first. */
+  prepareLifecycle(destroy = false): void {
+    if (destroy && this.atomic?.allowFaultedDestroy()) return;
+    this.assertMutable();
+    if (this.group?.commands.some(hasHostEntry)) this.cancelGroup();
+  }
+  private assertMutable(): void {
+    const reason = this.atomic?.refusal();
+    if (reason !== undefined) throw new Error(reason);
   }
 }

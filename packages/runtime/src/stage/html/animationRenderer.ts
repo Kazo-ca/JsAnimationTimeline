@@ -1,5 +1,7 @@
 // packages/runtime/src/stage/html/animationRenderer.ts
 import type { ITimelineDocument } from '../../model/document';
+import { collectLayers } from '../../evaluate/evaluateDocument';
+import type { TimelinePropertyValue } from '../../model/propertyTimeline';
 import type { LayerTarget } from '../../model/target';
 import type { PropertyRegistry } from '../../properties/PropertyRegistry';
 import { sameTarget } from '../routing';
@@ -12,6 +14,18 @@ import { InlineStyleKeeper } from './inlineStyles';
 import { HtmlPropertyInspection } from './propertyInspection';
 import type { IHtmlInspectPropertyOptions, IHtmlPropertyInspection } from './propertyInspection';
 import { composeHtmlAnimationFrame, prepareHtmlAnimation } from './preparedAnimation';
+
+/** Candidate and live inspection use the same binding-aware kind and textual fallback. */
+function inspectHtmlProperty(inspection: HtmlPropertyInspection, elements: readonly Element[], property: string,
+  layerId: string | undefined, knownKind: TimelinePropertyValue['kind'] | undefined, context: IHtmlAnimationContext,
+  registry: PropertyRegistry): IHtmlPropertyInspection {
+  const binding = layerId === undefined ? undefined : context.bindings?.[layerId]?.[property];
+  const kind = knownKind ?? (binding?.kind === 'gradient' ? htmlGradientValueKind(binding.component)
+    : /color$/i.test(binding?.kind === 'style' ? binding.cssName : property) ? 'color' : 'number');
+  const info = inspection.inspect(elements, property, layerId, kind, context, registry);
+  return !info.editable && knownKind === undefined && kind === 'number' && binding?.kind === 'style' && binding.unit === undefined
+    ? inspection.inspect(elements, property, layerId, 'text', context, registry) : info;
+}
 
 /** Exact HTML rendering shared by seeking and playback, independent of editor selection. */
 export class HtmlAnimationRenderer {
@@ -32,11 +46,42 @@ export class HtmlAnimationRenderer {
   private sourceDepth = 0;
 
   constructor(private readonly elements: HtmlElements, private readonly registry: () => PropertyRegistry,
-    context: IHtmlAnimationContext = { version: 1 }) {
+    context: IHtmlAnimationContext = { version: 1 }, private readonly inspectOnly?: <T>(read: () => T) => T) {
     this.context = cloneHtmlAnimationContext(context);
   }
 
   get animationContext(): IHtmlAnimationContext { return cloneHtmlAnimationContext(this.context); }
+  /** Installs only the paired context; the coordinator immediately updates and renders the final document. */
+  installContext(context: IHtmlAnimationContext): void { this.context = cloneHtmlAnimationContext(context); this.inspection.reset(); }
+
+  inspectCandidate(doc: ITimelineDocument, context: IHtmlAnimationContext, layerId: string, property: string,
+    valueKind?: TimelinePropertyValue['kind']): IHtmlPropertyInspection {
+    return this.withOriginals(() => {
+      const layer = collectLayers(doc).find((entry) => entry.id === layerId);
+      if (layer?.target === undefined) throw new Error('La cible de la propriété est absente.');
+      const knownKind = valueKind ?? layer.propertyTimelines?.[property]?.initialValue.kind;
+      const info = inspectHtmlProperty(new HtmlPropertyInspection(), this.elements.resolveElements(layer.target), property,
+        layerId, knownKind, context, this.registry());
+      return { ...info, sample: (sampleLayerId, frame) => this.withOriginals(() => {
+        const plan = prepareHtmlAnimation(doc, this.candidateLayers(doc), context, this.registry(), new HtmlPropertyInspection()).plan;
+        const result = plan.sample(sampleLayerId, property, frame, info.initialValue);
+        if (result.status === 'value') return result.value;
+        if (result.code === 'unrecorded' && info.initialValue !== undefined) return { ...info.initialValue };
+        throw new Error(result.reason);
+      }) };
+    });
+  }
+
+  validateCandidate(doc: ITimelineDocument, context: IHtmlAnimationContext): readonly IHtmlResolutionDiagnostic[] {
+    return this.withOriginals(() => {
+      return prepareHtmlAnimation(doc, this.candidateLayers(doc), context, this.registry(), new HtmlPropertyInspection()).diagnostics;
+    });
+  }
+
+  private candidateLayers(doc: ITimelineDocument): readonly IHtmlResolvedLayer[] {
+    return collectLayers(doc).flatMap((layer) => layer.target === undefined || 'ref' in layer.target && layer.target.stage !== 'html'
+      ? [] : [{ layerId: layer.id, layer, target: layer.target, elements: this.elements.resolveElements(layer.target) }]);
+  }
   get diagnostics(): readonly IHtmlResolutionDiagnostic[] { return [...this.issues, ...this.renderIssues].map((issue) => ({ ...issue,
     ...(issue.policies === undefined ? {} : { policies: [...issue.policies] }),
     layerIds: [...issue.layerIds], targets: [...issue.targets], choices: [...issue.choices] })); }
@@ -55,6 +100,7 @@ export class HtmlAnimationRenderer {
       layerId, layer, target, elements: this.elements.resolveElements(target)
     }));
     this.withOriginals(() => this.prepare(doc, resolved));
+    if (this.inspectOnly !== undefined) return;
     const next = new Set(resolved.flatMap((layer) => [...layer.elements]));
     for (const element of next) if (!this.held.has(element)) this.keeper.acquire(element);
     for (const element of this.held) if (!next.has(element)) { this.keeper.release(element); this.written.delete(element); }
@@ -84,16 +130,9 @@ export class HtmlAnimationRenderer {
       const layer = options.layerId === undefined ? this.layers.find((entry) => sameTarget(entry.target, target))
         : this.layers.find((entry) => entry.layerId === options.layerId && sameTarget(entry.target, target));
       const layerId = options.layerId ?? layer?.layerId;
-      const binding = layerId === undefined ? undefined : this.context.bindings?.[layerId]?.[property];
       const knownKind = options.valueKind ?? layer?.layer.propertyTimelines?.[property]?.initialValue.kind;
-      const kind = knownKind ?? (binding?.kind === 'gradient' ? htmlGradientValueKind(binding.component)
-        : /color$/i.test(binding?.kind === 'style' ? binding.cssName : property) ? 'color' : 'number');
       const elements = this.elements.resolveElements(target);
-      const info = this.inspection.inspect(elements, property, layerId, kind, this.context, this.registry());
-      if (!info.editable && knownKind === undefined && kind === 'number' && binding?.kind === 'style' && binding.unit === undefined) {
-        return this.inspection.inspect(elements, property, layerId, 'text', this.context, this.registry());
-      }
-      return info;
+      return inspectHtmlProperty(this.inspection, elements, property, layerId, knownKind, this.context, this.registry());
     });
   }
 
@@ -109,18 +148,18 @@ export class HtmlAnimationRenderer {
       const info = recorded === undefined ? this.inspect(target, name)
         : this.metadata.get(recorded.layerId)?.get(name) ?? this.inspect(target, name, { layerId: recorded.layerId });
       return { ...info,
-        sample: (layerId, frame) => {
+        sample: (layerId, frame) => this.withOriginals(() => {
           const result = this.plan?.sample(layerId, name, frame, info.initialValue);
           if (result?.status === 'value') return result.value;
           if (result?.status === 'refused' && result.code === 'unrecorded' && info.initialValue !== undefined) return { ...info.initialValue };
           throw new Error(result?.reason ?? 'La propriété ne peut pas être évaluée pour cette cible.');
-        },
-        validate: (layerId, timeline) => {
+        }),
+        validate: (layerId, timeline) => this.withOriginals(() => {
           const layer = this.layers.find((entry) => entry.layerId === layerId);
           if (layer === undefined) return [{ severity: 'error' as const, message: 'La cible de la propriété est indisponible.' }];
           const reason = this.inspection.validate(layer, name, timeline, this.context, this.registry());
           return reason === undefined ? [] : [{ severity: 'error' as const, property: name, message: reason }];
-        }
+        })
       };
     });
   }
@@ -146,6 +185,7 @@ export class HtmlAnimationRenderer {
   }
 
   private withOriginals<T>(read: () => T): T {
+    if (this.inspectOnly !== undefined) return this.inspectOnly(read);
     if (this.sourceDepth++ === 0) this.keeper.restoreOriginals();
     try { return read(); }
     finally {
@@ -160,6 +200,7 @@ export class HtmlAnimationRenderer {
   }
 
   private draw(): void {
+    if (this.inspectOnly !== undefined) return;
     if (this.sourceDepth > 0 || this.plan === undefined || this.doc === undefined) return;
     const frame = composeHtmlAnimationFrame(this.doc, this.layers, this.plan, this.context, this.inspection,
       this.frame, this.visible, this.active);

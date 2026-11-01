@@ -18,6 +18,7 @@ export default defineConfig({
     propertyTimelines: fileURLToPath(new URL('property-timelines.html', import.meta.url)),
     propertyEditor: fileURLToPath(new URL('property-editor.html', import.meta.url)),
     htmlProperties: fileURLToPath(new URL('html-properties.html', import.meta.url)),
+    atomicTransactions: fileURLToPath(new URL('atomic-transactions.html', import.meta.url)),
     playbackExports: fileURLToPath(new URL('playback-exports.html', import.meta.url)),
     cssExports: fileURLToPath(new URL('css-exports.html', import.meta.url))
   } } },

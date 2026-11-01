@@ -120,6 +120,7 @@ export class EditorStageHost implements IStageRenderer {
   private dropped = false;
   /** L'arrêt de la lecture passe outre la retenue : le rendu qui suit aussi. */
   private stopPassThrough = false;
+  private atomicErrors: unknown[] | undefined;
 
   /** Charge le document courant du Store ; lève l'erreur d'une scène qui le refuse (après avoir tout relâché). */
   constructor(options: IEditorStageHostOptions) {
@@ -132,7 +133,10 @@ export class EditorStageHost implements IStageRenderer {
     this.host = this.stages.length === 0 ? null : new StageHost({
       stages: this.stages,
       registry: options.registry,
-      onError: options.onError,
+      onError: (error) => {
+        if (this.atomicErrors !== undefined) this.atomicErrors.push(error);
+        else options.onError(error);
+      },
       onReport: (report) => this.feed.add(report, this.inHostLoad),
       onTargetsChanged: () => this.announceMissing(),
       isEditorVisible: (layerId) => isLayerEditorVisible(this.host?.document ?? store.document, layerId),
@@ -232,6 +236,18 @@ export class EditorStageHost implements IStageRenderer {
     catch (error) { this.onError(error); throw error; }
   }
 
+  /** @internal Atomic commits require a synchronous accepted stage document and rendered frame. */
+  installAtomic(doc: ITimelineDocument): void {
+    const errors: unknown[] = [];
+    this.atomicErrors = errors;
+    try {
+      this.loadNow(doc);
+      this.host?.render(this.now().time);
+      if (errors.length > 0) throw errors[0];
+      this.announceMissing();
+    } finally { this.atomicErrors = undefined; }
+  }
+
   /** Se désabonne, puis relâche chaque calque et détache chaque scène, quoi qu'il arrive. Idempotent. */
   destroy(): void {
     if (this.destroyed) return;
@@ -246,6 +262,7 @@ export class EditorStageHost implements IStageRenderer {
 
   private load(doc: ITimelineDocument): void {
     if (this.destroyed) return;
+    if (this.host?.document === doc) return;
     if (this.loading) {
       this.queued = doc;
       return;

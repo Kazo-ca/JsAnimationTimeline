@@ -12,6 +12,11 @@ export {
 } from './core/editor';
 export type { EditorOptions, IEditor, SetPropertyOptions } from './core/editor';
 export type {
+  IEditorTransactions, IEditorTransactionRequest, EditorTransactionResult,
+  ITransactionFault, IHostHistoryEffect, IPreparedHostChange, IHtmlContextChange,
+  TransactionChangedEvent, TransactionDirection, PropertyTimelineOperation
+} from './core/editor';
+export type {
   IEditorPropertyTimelines, IPropertyTimelineTransaction, PropertyChangedEvent,
   PropertyTimelineEditOptions, PropertyTimelineMutationResult
 } from './core/editor';
