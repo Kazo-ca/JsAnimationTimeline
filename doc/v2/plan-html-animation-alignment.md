@@ -16,7 +16,8 @@ implémentation. Les choix produit ne sont pas remis en discussion.
 | B — Éditeur et HTML | HA3 / `v2/HA3-property-rows-selection` | Lignes, sélection, dépliage, commandes visuelles et choix d'accélération avec courbe. | PR #124 fusionnée dans v2/base (`2f5295d`). |
 | B — Éditeur et HTML | HA4 / `v2/HA4-html-target-resolution` | Groupes, bases DOM, valeurs CSS riches, spécificité, cas 59 et conflits. | PR #125 fusionnée dans v2/base (`fef760a`). Phase B validée par l’utilisateur le 30 octobre 2026 (« a »). |
 | C — Sorties et raccordement | HA5 / `v2/HA5-playback-exports` | JSON préévalué, lecteur, export JS autonome HTML. | PR #126 fusionnée dans v2/base (`79aea4c`) après vérification locale et revues ECC. |
-| C — Sorties et raccordement | HA6 / `v2/HA6-css-export-conformance` | CSS fidèle/refus explicite, parité, démo et passation API réelle. | PR #127, référence fonctionnelle `3345e1c` vérifiée et revues ECC favorables ; phase C en attente de validation utilisateur. |
+| C — Sorties et raccordement | HA6 / `v2/HA6-css-export-conformance` | CSS fidèle/refus explicite, parité, démo et passation API réelle. | PR #127 fusionnée (`f93429b`), référence fonctionnelle `3345e1c` vérifiée ; phase C validée par l'utilisateur. |
+| Complément du raccordement | HA7 / `v2/HA7-gradient-stop-order` | Tri des points de dégradé au rendu, identité conservée, archives locales distinctes. | Choix 1A/2A confirmés ; vérification en cours. Aucune fusion ni publication autorisée pour ce lot. |
 
 Chaque tâche produit une PR vers `v2/base`. Fusion autorisée seulement après
 validation complète et revues sans constat bloquant. Aucune fusion vers `main`.

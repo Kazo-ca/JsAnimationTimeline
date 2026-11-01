@@ -14,7 +14,11 @@ La référence fonctionnelle HA6 vérifiée est
 Ce commit contient les API HA1 à HA6 et les preuves décrites dans
 `doc/v2/todo/ha6-validation.md`. Les commits documentaires suivants ne changent
 pas les binaires vérifiés.
-La validation utilisateur de la phase C reste à obtenir après sa démonstration.
+La phase C a été validée par l'utilisateur, puis les essais locaux du Designer
+et le tri des points de dégradé ont été confirmés (choix 1A/2A).
+HA7 prépare ce tri sur `v2/HA7-gradient-stop-order`, sans publication ni fusion.
+Sa référence et ses preuves sont consignées dans `doc/v2/todo/ha7-validation.md`.
+Les archives HA6 initiales restent une livraison distincte.
 
 Ces changements ne désignent pas une nouvelle version publiée. Le numéro de
 version des archives locales ne suffit pas à identifier ce code. Utiliser le
@@ -53,6 +57,9 @@ de propriétés sont opaques et ne sont pas des identifiants de calques.
   la scène HTML sans ajouter une clé initiale au document éditable.
 - Le contexte HTML et ses décisions se sauvegardent avec le projet Designer,
   séparément du document temporel générique. Une décision périmée est refusée.
+- HA7 trie les points au rendu par position, sans modifier leur identité. Il
+  n'ajoute pas d'historique atomique pour contexte HTML + clés + effets DOM :
+  voir `timeline-host-transactions-proposal.md` pour la proposition non livrée.
 - Un document éditable ne se reconstruit pas à partir du JSON préévalué. Les
   sorties HA5 annoncent une précision par image ; le CSS HA6 accepté est continu.
 - Le Designer présente les refus CSS et les alternatives disponibles. Il ne

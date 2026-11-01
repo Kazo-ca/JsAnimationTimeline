@@ -8,6 +8,7 @@ import { createDoc, layer } from '../../../model/spans/__tests__/fixtures';
 import { cleanBody, createContainer } from './fixtures';
 
 const present = (value: boolean): TimelinePropertyValue => ({ kind: 'boolean', value });
+const number = (value: number): TimelinePropertyValue => ({ kind: 'number', value });
 const editors: IEditor[] = [];
 
 function setup(middlePresent = false, tracks: Readonly<Record<string, IPropertyTimeline>> = {}) {
@@ -22,7 +23,9 @@ function setup(middlePresent = false, tracks: Readonly<Record<string, IPropertyT
   const context: IHtmlAnimationContext = { version: 1, gradients: { gradient: [gradient] }, bindings: { gradient: {
     leftPresent: { kind: 'gradient', gradientId: 'fill', component: 'present', stopId: 'left' },
     middlePresent: { kind: 'gradient', gradientId: 'fill', component: 'present', stopId: 'middle' },
-    rightPresent: { kind: 'gradient', gradientId: 'fill', component: 'present', stopId: 'right' }
+    rightPresent: { kind: 'gradient', gradientId: 'fill', component: 'present', stopId: 'right' },
+    rightPosition: { kind: 'gradient', gradientId: 'fill', component: 'position', stopId: 'right' },
+    middleOpacity: { kind: 'gradient', gradientId: 'fill', component: 'opacity', stopId: 'middle' }
   } } };
   const container = createContainer();
   const stage = createEditorHtmlStage(container, { root, animationContext: context });
@@ -32,10 +35,63 @@ function setup(middlePresent = false, tracks: Readonly<Record<string, IPropertyT
   ], 100), stage, clock, defaultPlugins: false });
   editors.push(editor);
   const seek = (frame: number) => { editor.playback.seek(frame); clock.advance(1); };
-  return { editor, stage, seek };
+  return { editor, stage, seek, element };
 }
 
 afterEach(() => { editors.splice(0).forEach((editor) => editor.destroy()); cleanBody(); });
+
+it('renders crossing stops at fractional frames and reverses position gestures without changing stop identities', () => {
+  const { editor, stage, seek, element } = setup(true, {
+    rightPosition: { initialValue: number(100), keys: [
+      { frame: 1, value: number(100) }, { frame: 81, value: number(0) }
+    ], transitions: [{ id: 'move-right', fromFrame: 1, toFrame: 81 }] }
+  });
+  const original = editor.document;
+  const context = stage.animationContext;
+  const expected = (stops: string) => `linear-gradient(90deg, rgba(255, 0, 0, 1) 0%, ${stops})`;
+  const beforeCrossing = expected('rgba(0, 255, 0, 1) 50%, rgba(0, 0, 255, 1) 50.625%');
+  const tied = expected('rgba(0, 255, 0, 1) 50%, rgba(0, 0, 255, 1) 50%');
+  const afterCrossing = expected('rgba(0, 0, 255, 1) 49.375%, rgba(0, 255, 0, 1) 50%');
+  for (const [frame, css] of [[41.5, afterCrossing], [40.5, beforeCrossing], [41, tied], [41.5, afterCrossing]] as const) {
+    seek(frame);
+    expect(element.style.backgroundImage).toBe(css);
+    expect(stage.diagnostics).toEqual([]);
+    expect(editor.document).toEqual(original);
+    expect(stage.animationContext).toEqual(context);
+  }
+
+  seek(41);
+  const change = () => {
+    expect(editor.propertyTimelines.set('gradient', 'rightPosition', number(25))).toEqual({ status: 'changed' });
+    expect(editor.propertyTimelines.set('gradient', 'middleOpacity', number(.25), { initialValue: number(1) })).toEqual({ status: 'changed' });
+  };
+  const preview = expected('rgba(0, 0, 255, 1) 25%, rgba(0, 255, 0, 0.25) 50%');
+  const cancelled = editor.propertyTimelines.beginTransaction('Move gradient stop');
+  change();
+  expect(element.style.backgroundImage).toBe(preview);
+  cancelled.cancel();
+  expect(editor.document).toEqual(original);
+  expect(element.style.backgroundImage).toBe(tied);
+  expect(editor.canUndo).toBe(false);
+
+  const committed = editor.propertyTimelines.beginTransaction('Move gradient stop');
+  change();
+  expect(committed.commit()).toBe(true);
+  const changed = editor.document;
+  expect(editor.undo()).toBe(true);
+  expect(editor.document).toEqual(original);
+  expect(element.style.backgroundImage).toBe(tied);
+  expect(editor.canUndo).toBe(false);
+  const cancelWithRedo = editor.propertyTimelines.beginTransaction('Cancel another move');
+  change();
+  cancelWithRedo.cancel();
+  expect(editor.canRedo).toBe(true);
+  expect(editor.redo()).toBe(true);
+  expect(editor.document).toEqual(changed);
+  expect(element.style.backgroundImage).toBe(preview);
+  expect(stage.animationContext).toEqual(context);
+  expect(stage.animationContext.gradients?.gradient?.[0].stops.map((stop) => stop.id)).toEqual(['left', 'middle', 'right']);
+});
 
 it('adds a middle stop before removing the left stop, with reversible edits and no history for an invalid third removal', () => {
   const { editor, stage, seek } = setup();

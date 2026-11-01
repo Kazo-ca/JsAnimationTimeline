@@ -15,7 +15,8 @@ export const htmlContext: IHtmlAnimationContext = { version: 1, gradients: { gra
   gradient: {
     angle: { kind: 'gradient', gradientId: 'fill', component: 'angle' },
     middlePresent: { kind: 'gradient', gradientId: 'fill', stopId: 'middle', component: 'present' },
-    middleOpacity: { kind: 'gradient', gradientId: 'fill', stopId: 'middle', component: 'opacity' }
+    middleOpacity: { kind: 'gradient', gradientId: 'fill', stopId: 'middle', component: 'opacity' },
+    rightPosition: { kind: 'gradient', gradientId: 'fill', stopId: 'right', component: 'position' }
   }
 } };
 
@@ -36,7 +37,9 @@ export const animation: ITimelineDocument = { version: '2.0.0', settings: { fps:
       { frame: 30, value: { kind: 'boolean', value: true } }, { frame: 75, value: { kind: 'boolean', value: false } }
     ] },
     middleOpacity: { initialValue: n(.6), keys: [{ frame: 30, value: n(.6) }, { frame: 70, value: n(.25) }],
-      transitions: [{ id: 'middle-opacity-motion', fromFrame: 30, toFrame: 70 }] }
+      transitions: [{ id: 'middle-opacity-motion', fromFrame: 30, toFrame: 70 }] },
+    rightPosition: { initialValue: n(100), keys: [{ frame: 30, value: n(100) }, { frame: 70, value: n(0) }],
+      transitions: [{ id: 'right-position-motion', fromFrame: 30, toFrame: 70 }] }
   } }
 ] };
 
@@ -75,7 +78,7 @@ export function createScene(owner: Document): HTMLElement {
     angle: { binding: { kind: 'gradient', gradientId: 'fill', component: 'angle' }, valueKind: 'number' }
   }, [gradient]);
   fill.style.backgroundImage = initial.declarations['background-image'];
-  const label = owner.createElement('p'); label.textContent = 'Groupe 50 % · exception 80 % · mouvement élastique';
+  const label = owner.createElement('p'); label.textContent = 'Groupe 50 % · exception 80 % · mouvement élastique · croisement des points du dégradé à l’image 50';
   root.append(group, area, fill, label); return root;
 }
 
