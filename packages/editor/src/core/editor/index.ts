@@ -13,7 +13,7 @@ export type {
   PropertyTimelineEditOptions, PropertyTimelineMutationResult
 } from './propertyTimelineTypes';
 export type {
-  IEditorTransactions, IEditorTransactionRequest, EditorTransactionResult,
+  IEditorTransactions, IEditorTransactionRequest, IHtmlConflictTransactionRequest, EditorTransactionResult,
   ITransactionFault, IHostHistoryEffect, IPreparedHostChange, IHtmlContextChange,
   TransactionChangedEvent, TransactionDirection
 } from './transactionTypes';

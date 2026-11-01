@@ -10,6 +10,7 @@ import { routeOf } from '../stage/targetInfo';
 import { freezeAtomicDocument as freezeDocument } from './atomicDocument';
 
 export type HtmlContexts = ReadonlyMap<IHtmlStageAtomicAccess, IHtmlAnimationContext>;
+export type HtmlDiagnostics = ReadonlyMap<IHtmlStageAtomicAccess, readonly IHtmlResolutionDiagnostic[]>;
 
 /** Owned JSON values compare independently of object insertion order. */
 export function sameAtomicData(a: unknown, b: unknown): boolean {
@@ -28,6 +29,12 @@ export class AtomicCandidate {
 
   captureBaseline(doc: ITimelineDocument, contexts: HtmlContexts): void {
     this.baseline = new Map([...contexts].map(([access, context]) => [access, access.validate(doc, context)]));
+  }
+
+  /** Exact previously present issues may be restored by undo of an explicit resolution. */
+  conflictBaseline(access: IHtmlStageAtomicAccess, id: string): HtmlDiagnostics {
+    const issues = (this.baseline.get(access) ?? []).filter((issue) => issue.id === id || issue.id === `html-stale:${id}`);
+    return new Map([[access, issues]]);
   }
 
   apply(doc: ITimelineDocument, operations: readonly PropertyTimelineOperation[], contexts: HtmlContexts): ITimelineDocument {
@@ -54,13 +61,13 @@ export class AtomicCandidate {
   }
 
   validate(doc: ITimelineDocument, operations: readonly PropertyTimelineOperation[], contexts: HtmlContexts,
-    permissions = true): void {
+    permissions = true, restored: HtmlDiagnostics = new Map()): void {
     const issues = validateDocument(doc, { allowLiveTargets: false });
     if (issues.length > 0) throw new Error(`Le document proposé est invalide : ${issues[0].path} (${issues[0].code}).`);
     freezeDocument(doc);
     if (permissions) this.validatePermissions(doc, operations, contexts);
     for (const [access, context] of contexts) {
-      const previousIssues = this.baseline.get(access) ?? [];
+      const previousIssues = [...(this.baseline.get(access) ?? []), ...(restored.get(access) ?? [])];
       const blocking = access.validate(doc, context).find((issue) => issue.blocking && !previousIssues.some(
         (old) => sameAtomicData(old, issue)));
       if (blocking !== undefined) throw new Error(blocking.message);

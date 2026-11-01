@@ -1,5 +1,5 @@
 // packages/editor/src/core/editor/transactionTypes.ts
-import type { IHtmlAnimationContext } from '@kazo-ca/timeline-runtime';
+import type { HtmlBeforeFirstPolicy, IHtmlAnimationContext } from '@kazo-ca/timeline-runtime';
 import type { ICommand } from '../commands/ICommand';
 import type { PropertyTimelineOperation } from '../../model/propertyTimelines/types';
 
@@ -28,6 +28,17 @@ export interface IEditorTransactionRequest {
   /** Initial confirmation only. Undo/redo revalidate capabilities, not this UI ticket. */
   readonly isCurrent?: () => boolean;
 }
+/** HA10-FINAL-CANDIDATE-CONFLICTS/1: confirmed choice and only its announced key writes. */
+export interface IHtmlConflictTransactionRequest {
+  readonly label: string;
+  readonly stageId: string;
+  readonly confirmation: { readonly id: string; readonly signature: string };
+  readonly winnerLayerId: string;
+  readonly beforeFirst?: HtmlBeforeFirstPolicy;
+  readonly properties?: readonly Extract<PropertyTimelineOperation, { readonly kind: 'set' }>[];
+  /** Initial confirmation guard, including DOM membership/identity and source CSS. */
+  readonly isCurrent: () => boolean;
+}
 export interface ITransactionFault {
   readonly message: string;
   readonly phase: 'apply' | 'rollback' | 'undo' | 'redo' | 'cancel';
@@ -41,6 +52,7 @@ export type EditorTransactionResult =
 export interface IEditorTransactions {
   readonly fault: ITransactionFault | undefined;
   execute(request: IEditorTransactionRequest): EditorTransactionResult;
+  resolveHtmlConflict(request: IHtmlConflictTransactionRequest): EditorTransactionResult;
 }
 export interface TransactionChangedEvent {
   readonly transactionId: string;

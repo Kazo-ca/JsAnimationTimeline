@@ -14,6 +14,8 @@ export interface IHtmlStageAtomicAccess {
     property: string, kind?: TimelinePropertyValue['kind']): IHtmlPropertyInspection;
   validate(document: ITimelineDocument, context: IHtmlAnimationContext): readonly IHtmlResolutionDiagnostic[];
   source<T>(action: () => T): T;
+  /** Read-only confirmation against source styles, including host-owned previews. */
+  readSource<T>(read: () => T): T;
   guard(check: () => void): void;
 }
 

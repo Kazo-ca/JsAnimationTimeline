@@ -1,6 +1,6 @@
 // packages/editor/src/core/editor/createEditorTransactions.ts
 import { cloneHtmlAnimationContext, getHtmlStageAtomicAccess } from '@kazo-ca/timeline-runtime';
-import type { IHtmlStageAtomicAccess, ITimelineDocument, ITransportTime } from '@kazo-ca/timeline-runtime';
+import type { IHtmlResolutionDiagnostic, IHtmlStageAtomicAccess, ITimelineDocument, ITransportTime } from '@kazo-ca/timeline-runtime';
 import { flattenHistory, isHostEntry } from '../commands/atomicHistory';
 import type { HistoryEntry, IAtomicHistoryCoordinator, IHostHistoryEntry } from '../commands/atomicHistory';
 import type { ICommand } from '../commands/ICommand';
@@ -10,14 +10,19 @@ import { PropertyTimelineCommand } from '../../model/propertyTimelines/PropertyT
 import type { PropertyTimelineOperation } from '../../model/propertyTimelines/types';
 import type { IEditorParts } from './Editor';
 import { AtomicCandidate, sameAtomicData } from './atomicCandidate';
-import type { HtmlContexts } from './atomicCandidate';
+import type { HtmlContexts, HtmlDiagnostics } from './atomicCandidate';
+import { prepareAtomicHtmlConflict, resolveAtomicHtmlConflict, snapshotHtmlConflictRequest } from './atomicHtmlConflict';
 import { freezeAtomicDocument as freezeDocument } from './atomicDocument';
 import { assertSynchronousHostChange, prepareHostRender, validatePreparedHostChange } from './prepareHostRender';
 import type { HostRenderCause, IEditorHostRenderer } from './hostRendererTypes';
-import type { EditorTransactionResult, IEditorTransactionRequest, IEditorTransactions, IHostHistoryEffect,
+import type { EditorTransactionResult, IEditorTransactionRequest, IEditorTransactions, IHtmlConflictTransactionRequest, IHostHistoryEffect,
   IPreparedHostChange, ITransactionFault, TransactionChangedEvent, TransactionDirection } from './transactionTypes';
 
 type Parts = Pick<IEditorParts, 'bus' | 'store' | 'commands' | 'stageHost' | 'registry' | 'lifecycle' | 'playback'>;
+interface AtomicInput {
+  readonly input: IEditorTransactionRequest;
+  readonly resolution?: IHtmlConflictTransactionRequest;
+}
 interface AtomicRecord {
   readonly id: string;
   readonly label: string;
@@ -30,6 +35,7 @@ interface AtomicRecord {
   readonly commandAfter: ITimelineDocument;
   readonly effect?: IHostHistoryEffect;
   readonly applied?: IPreparedHostChange;
+  readonly restoredDiagnostics?: HtmlDiagnostics;
 }
 interface AppliedParticipant { readonly id: string; readonly change: IPreparedHostChange }
 interface PreparedTransaction {
@@ -38,6 +44,7 @@ interface PreparedTransaction {
   readonly label: string;
   readonly id: string;
   readonly groupToken?: object;
+  readonly isCurrent?: () => boolean;
   commit(): void;
 }
 const BUSY = 'Une transaction atomique est en cours : réessayez après sa notification.';
@@ -46,10 +53,11 @@ const RELEASED = 'Le rendu hôte a été libéré : les modifications sont inter
 
 /** Compatibility for internal hand-built contexts without a transaction coordinator. */
 export function unavailableEditorTransactions(assertActive: (operation: string) => void): IEditorTransactions {
-  return Object.freeze({ get fault() { return undefined; }, execute: () => {
+  const execute = (): EditorTransactionResult => {
     assertActive('transactions.execute');
     return { status: 'refused' as const, reason: 'Les transactions atomiques sont indisponibles.' };
-  } });
+  };
+  return Object.freeze({ get fault() { return undefined; }, execute, resolveHtmlConflict: execute });
 }
 
 /** One coordinator participates in CommandStack; it never owns an alternate undo stack. */
@@ -90,7 +98,11 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
 
   facade(): IEditorTransactions {
     const readFault = (): ITransactionFault | undefined => this.failure;
-    return Object.freeze({ get fault() { return readFault(); }, execute: (request: IEditorTransactionRequest) => this.execute(request) });
+    return Object.freeze({ get fault() { return readFault(); }, execute: (request: IEditorTransactionRequest) => this.execute(() => ({ input: request })),
+      resolveHtmlConflict: (request: IHtmlConflictTransactionRequest) => this.execute(() => {
+        const resolution = snapshotHtmlConflictRequest(request);
+        return { input: resolution, resolution };
+      }) });
   }
   refusal(): string | undefined { return this.busy ? BUSY : this.failure?.message ?? (this.rendererReleased ? RELEASED : undefined); }
   get faulted(): boolean { return this.failure !== undefined; }
@@ -98,7 +110,7 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
   allowFaultedDestroy(): boolean { return !this.busy && (this.failure !== undefined || this.rendererReleased); }
   get routesCommands(): boolean { return this.renderer !== undefined; }
   executeCommand(command: ICommand): boolean {
-    const result = this.execute({ label: command.label, commands: [command] }, true);
+    const result = this.execute(() => ({ input: { label: command.label, commands: [command] } }), true);
     if (result.status === 'faulted') throw new Error(result.fault.message);
     if (result.status === 'refused') this.parts.bus.emit('command:refused', { command, reason: result.reason });
     return result.status === 'changed';
@@ -111,16 +123,24 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
     this.rendererReleased = true;
   }
 
-  execute(input: IEditorTransactionRequest, ordinaryCommand = false): EditorTransactionResult {
+  execute(readInput: () => AtomicInput, ordinaryCommand = false): EditorTransactionResult {
     this.parts.lifecycle.assertActive('transactions.execute');
     if (this.failure !== undefined) return { status: 'faulted', fault: this.failure };
     const refusal = this.refusal();
     if (refusal !== undefined) return { status: 'refused', reason: refusal };
     return this.run('execute', (before, contexts, applied) => {
+      // Read JavaScript getters only after the refusal and reentrancy boundary is active.
+      const { input, resolution } = readInput();
       if (typeof input.label !== 'string' || input.label.trim() === '') throw new Error('La transaction doit avoir un libellé.');
-      this.assertCurrent(input.isCurrent);
+      const assertConfirmation = (): void => {
+        if (resolution === undefined) this.assertCurrent(input.isCurrent);
+        else this.withConfirmationSources(() => this.assertCurrent(input.isCurrent));
+      };
+      assertConfirmation();
       const properties = (input.properties ?? []).map(clonePropertyOperation);
       const commands = [...(input.commands ?? [])];
+      const conflict = resolution === undefined ? undefined
+        : prepareAtomicHtmlConflict(resolution, before, contexts, this.parts.stageHost, properties);
       // The existing cancellable command channel also guards a property/context/effect-only batch.
       const intent = { label: input.label, do: (doc: ITimelineDocument) => doc, undo: (doc: ITimelineDocument) => doc };
       if (!ordinaryCommand && !this.parts.bus.emitCancellable('command:before', { command: intent, document: before })) throw new Error(CANCELLED_REASON);
@@ -146,33 +166,40 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
       }
       const commandAfter = freezeDocument(next);
       next = this.candidate.apply(next, properties, nextContexts);
+      if (conflict !== undefined) resolveAtomicHtmlConflict(conflict, next, nextContexts, properties);
       const allProperties = [...commandProperties, ...properties];
       this.candidate.validate(next, allProperties, nextContexts);
-      this.assertCurrent(input.isCurrent);
+      assertConfirmation();
       this.assertRevisions();
       const contextChanged = this.html.some((access) => !sameAtomicData(contexts.get(access), nextContexts.get(access)));
       if (sameAtomicData(next, before)) next = before;
       if (next === before && !contextChanged && prepared?.changed !== true) return undefined;
       const record: AtomicRecord = { id: `host-transaction-${++this.sequence}`, label: input.label,
         before, after: freezeDocument(next), beforeContexts: contexts, afterContexts: nextContexts,
-        properties: allProperties, commands, commandAfter, effect, applied: prepared };
+        properties: allProperties, commands, commandAfter, effect, applied: prepared,
+        ...(conflict === undefined ? {} : { restoredDiagnostics: this.candidate.conflictBaseline(conflict.access, conflict.diagnostic.id) }) };
       const token = Object.freeze({});
       const entry: IHostHistoryEntry = { kind: 'host', label: input.label, token };
       return { document: record.after, contexts: nextContexts, label: input.label, id: record.id,
+        ...(resolution === undefined ? {} : { isCurrent: input.isCurrent }),
         commit: () => { this.records.set(token, record); this.parts.commands.recordAtomic(entry); } };
     });
   }
 
   replay(entry: HistoryEntry, direction: 'undo' | 'redo' | 'cancel', commit: () => void, groupToken?: object): boolean {
     if (this.refusal() !== undefined) return false;
-    try { this.assertRevisions(); } catch { return false; }
     const ordered = flattenHistory([entry]);
+    // HA10 rechecks the actual context and capabilities after a source refresh.
+    // A refresh is not itself a stale confirmation: history has no original UI ticket.
+    const restoresConflict = ordered.some((item) => isHostEntry(item) && this.records.get(item.token)?.restoredDiagnostics !== undefined);
+    if (!restoresConflict) { try { this.assertRevisions(); } catch { return false; } }
     const entries = direction === 'redo' ? ordered : [...ordered].reverse();
     const cause = direction === 'cancel' ? 'group-cancel' : direction;
     const result = this.run(cause, (before, contexts, applied) => {
       let next = before;
       let nextContexts = new Map(contexts);
       const operations: PropertyTimelineOperation[] = [];
+      const restoredDiagnostics = new Map<IHtmlStageAtomicAccess, readonly IHtmlResolutionDiagnostic[]>();
       let id = '';
       for (const item of entries) {
         if (!isHostEntry(item)) {
@@ -206,8 +233,11 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
         next = direction === 'redo' ? record.after : record.before;
         nextContexts = new Map(direction === 'redo' ? record.afterContexts : record.beforeContexts);
         if (direction === 'redo') operations.push(...record.properties);
+        else for (const [access, issues] of record.restoredDiagnostics ?? []) {
+          restoredDiagnostics.set(access, [...(restoredDiagnostics.get(access) ?? []), ...issues]);
+        }
       }
-      this.candidate.validate(next, operations, nextContexts, direction === 'redo');
+      this.candidate.validate(next, operations, nextContexts, direction === 'redo', restoredDiagnostics);
       this.assertRevisions();
       return { document: next, contexts: nextContexts, label: entry.label, id, commit, groupToken };
     });
@@ -259,10 +289,15 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
       if (prepared === undefined) { batch.discard(); return { status: 'noop' }; }
       this.html.forEach((access) => this.revisions.set(access, access.revision));
       // Source inspection has ended; its restoration must never overwrite the host's new preview.
-      this.applyRender(prepared.document, prepared.contexts, candidateTime, cause, applied, renderVersion);
+      const assertConfirmation = (): void => {
+        if (prepared.isCurrent !== undefined) this.withConfirmationSources(() => this.assertCurrent(prepared.isCurrent));
+      };
+      assertConfirmation();
+      this.applyRender(prepared.document, prepared.contexts, candidateTime, cause, applied, renderVersion, assertConfirmation);
       if (this.renderer !== undefined) this.parts.playback.commitDocumentTiming(prepared.document, candidateTime, () => {
         this.assertRenderVersion(renderVersion);
         this.assertRevisions();
+        assertConfirmation();
       });
       prepared.commit();
       committed = true;
@@ -335,15 +370,17 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
     if (this.renderer !== undefined && this.parts.playback.renderVersion !== version) throw new Error(STALE);
   }
   private applyRender(document: ITimelineDocument, contexts: HtmlContexts, time: ITransportTime,
-    cause: HostRenderCause, applied: AppliedParticipant[], version: number): void {
+    cause: HostRenderCause, applied: AppliedParticipant[], version: number, assertConfirmation?: () => void): void {
     if (this.renderer === undefined) return;
     if (this.rendererReleased) throw new Error(RELEASED);
     const prepared = prepareHostRender(this.renderer, document, contexts, this.parts.stageHost.stages, this.parts.registry, time, cause);
     this.assertRenderVersion(version);
     this.assertRevisions();
+    assertConfirmation?.();
     if (prepared.changed) this.applyParticipant(applied, 'host-renderer', prepared);
     this.assertRenderVersion(version);
     this.assertRevisions();
+    assertConfirmation?.();
   }
   private load(document: ITimelineDocument): void {
     this.assertMutable();
@@ -387,6 +424,9 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
   }
   private withSources<T>(action: () => T, index = 0): T {
     return index >= this.html.length ? action() : this.html[index].source(() => this.withSources(action, index + 1));
+  }
+  private withConfirmationSources<T>(read: () => T, index = 0): T {
+    return index >= this.html.length ? read() : this.html[index].readSource(() => this.withConfirmationSources(read, index + 1));
   }
   private groupId(token: object): string {
     let id = this.groupIds.get(token);

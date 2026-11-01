@@ -1,7 +1,7 @@
 <!-- doc/integration/timeline-integration-status.md -->
 # Raccordement réel de HtmlAnimation à la Timeline
 
-Ce document accompagne le contrat HA-TL-001 r2 et les API HA1 à HA9. Il permet
+Ce document accompagne le contrat HA-TL-001 r2 et les API HA1 à HA10. Il permet
 au chantier HtmlAnimation d'avancer sans accès à la conversation Timeline.
 
 ## Référence de travail
@@ -32,6 +32,10 @@ Référence fonctionnelle HA9 : `c340203e50ac84f5fb58e8f9e60dc83f3c2bdf56`,
 [PR #130](https://github.com/Kazo-ca/JsAnimationTimeline/pull/130), non fusionnée.
 Ce checkpoint ne comprend pas la résolution sur candidat final ni la projection
 spatiale, qui restent suivies dans `doc/v2/todo/ha9-integration-bridge.md`.
+HA10 traite le premier de ces écarts sur `v2/HA10-final-candidate-conflicts`.
+Son contrat est `HA10-FINAL-CANDIDATE-CONFLICTS/1` dans
+`timeline-ha10-conflict-api.md` ; son état reste à vérifier avant installation.
+La projection spatiale commune reste un lot suivant distinct.
 
 Ces changements ne désignent pas une nouvelle version publiée. Le numéro de
 version des archives locales ne suffit pas à identifier ce code. Utiliser le
@@ -56,6 +60,7 @@ packages actuellement disponibles sur npm/NuGet possèdent ces interfaces.
 | Structure, contexte, clés et effet HTML dans une annulation | `editor.transactions.execute`, même historique que HA2 ; HA8. |
 | Designer seul responsable du rendu HTML | `createHtmlInspectionStage` et son callback `preserveSource` ; HA8. |
 | Aperçu hôte déjà appliqué au premier observateur | `EditorOptions.hostRenderer.prepare(candidate)` ; HA9, échantillon et contextes candidats immuables, compensation avant notification. |
+| Choix de conflit avec les clés annoncées | `editor.transactions.resolveHtmlConflict` ; HA10, décision calculée sur le candidat final, garde hôte obligatoire. |
 
 Les signatures et limites détaillées sont dans les documents d'API voisins.
 L'ancienne méthode numérique `editor.setProperty()` conserve son contrat
@@ -104,6 +109,7 @@ de propriétés sont opaques et ne sont pas des identifiants de calques.
 | TL-C18 | Tests d'évaluation/découpe des sources de courbe et parcours d'insertion dans un effet élastique. |
 | HA8-TRANSACTIONS/1 | Démo `atomic-transactions.html`, tests `Editor.hostTransaction*` et `e2e/validation/atomic-transactions.spec.ts`. |
 | HA9-HOST-RENDER/1 | Démo `host-rendering.html`, tests `Editor.hostRenderer*` et `e2e/validation/host-rendering.spec.ts`. |
+| HA10-FINAL-CANDIDATE-CONFLICTS/1 | Démo `final-candidate-conflicts.html`, tests `Editor.finalCandidateConflict*` et `e2e/validation/final-candidate-conflicts.spec.ts`. |
 
 Les résultats détaillés de chaque lot sont dans `doc/v2/todo/ha*-validation.md`.
 HtmlAnimation doit maintenant exécuter ses propres tests d'adaptateur et de

@@ -351,6 +351,7 @@ function createHtmlStageCore(options: IHtmlStageOptions, inspectOnly?: <T>(read:
     inspect: (doc, context, layerId, property, kind) => inspectSource(() => modern.inspectCandidate(doc, context, layerId, property, kind)),
     validate: (doc, context) => inspectSource(() => modern.validateCandidate(doc, context)),
     source: (action) => inspectOnly === undefined ? inspectSource(() => modern.withSourceStyles(action)) : action(),
+    readSource: (read) => inspectOnly === undefined ? inspectSource(() => modern.withSourceStyles(read)) : inspectOnly(read),
     guard: (check) => { mutationGuard = check; }
   });
   return stage;

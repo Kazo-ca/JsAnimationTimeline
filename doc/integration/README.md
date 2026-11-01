@@ -21,6 +21,9 @@ peuvent varier selon l'outil : ils ne constituent pas un mécanisme de coordinat
    [rendu hôte HA9](timeline-ha9-host-render-api.md) — historique partagé,
    préparation compensable et aperçu visible avant les notifications. Lire leur
    état de validation et la référence des archives avant de les installer.
+7. [Décisions de conflit HA10](timeline-ha10-conflict-api.md) — confirmation du
+   diagnostic original et calcul sur les clés réellement obtenues. Vérifier
+   l'état de livraison indiqué dans ce contrat avant de l'utiliser.
 
 Les documents suffisent sans relire les discussions et sans suivre les références
 numérotées aux anciennes questions. Les cas concernés sont décrits intégralement.

@@ -100,7 +100,7 @@ try {
     run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2020', file], temp);
   }
   write('transactions-consumer.ts', [
-    "import type { IEditor, IEditorTransactions, IEditorTransactionRequest, EditorTransactionResult, IHostHistoryEffect, PropertyTimelineOperation, TransactionChangedEvent } from '@kazo-ca/timeline-editor';",
+    "import type { IEditor, IEditorTransactions, IEditorTransactionRequest, IHtmlConflictTransactionRequest, EditorTransactionResult, IHostHistoryEffect, PropertyTimelineOperation, TransactionChangedEvent } from '@kazo-ca/timeline-editor';",
     "import { createHtmlInspectionStage, type IHtmlAnimationContext, type IHtmlInspectionStageOptions, type IHtmlStage } from '@kazo-ca/timeline-runtime';",
     "export function inspection(root: ParentNode, context: IHtmlAnimationContext): IHtmlStage {",
     "  const options: IHtmlInspectionStageOptions = { root, animationContext: context, preserveSource: read => read() };",
@@ -114,6 +114,10 @@ try {
     "  editor.on('transaction:changed', (event: TransactionChangedEvent) => { void [event.phase, event.cause, event.revision]; });",
     "  void transactions.fault;",
     "  return transactions.execute(request);",
+    "}",
+    "export function resolve(editor: IEditor, confirmation: IHtmlConflictTransactionRequest['confirmation']): EditorTransactionResult {",
+    "  const request: IHtmlConflictTransactionRequest = { label: 'Confirm opacity winner and key', stageId: 'html', confirmation, winnerLayerId: 'object', properties: [{ kind: 'set', layerId: 'object', property: 'opacity', frame: 20, value: { kind: 'number', value: 0.5 } }], isCurrent: () => true };",
+    "  return editor.transactions.resolveHtmlConflict(request);",
     "}",
   ].join('\n'));
   run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2020', 'transactions-consumer.ts'], temp);

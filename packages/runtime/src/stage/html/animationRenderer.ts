@@ -84,6 +84,7 @@ export class HtmlAnimationRenderer {
   }
   get diagnostics(): readonly IHtmlResolutionDiagnostic[] { return [...this.issues, ...this.renderIssues].map((issue) => ({ ...issue,
     ...(issue.policies === undefined ? {} : { policies: [...issue.policies] }),
+    ...(issue.contributions === undefined ? {} : { contributions: issue.contributions.map((entry) => ({ ...entry })) }),
     layerIds: [...issue.layerIds], targets: [...issue.targets], choices: [...issue.choices] })); }
 
   setContext(context: IHtmlAnimationContext): void {
