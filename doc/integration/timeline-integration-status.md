@@ -16,8 +16,9 @@ Ce commit contient les API HA1 à HA6 et les preuves décrites dans
 pas les binaires vérifiés.
 La phase C a été validée par l'utilisateur, puis les essais locaux du Designer
 et le tri des points de dégradé ont été confirmés (choix 1A/2A).
-HA7 prépare ce tri sur `v2/HA7-gradient-stop-order`, sans publication ni fusion.
-Sa référence et ses preuves sont consignées dans `doc/v2/todo/ha7-validation.md`.
+HA7 livre ce tri localement sur `v2/HA7-gradient-stop-order`, sans publication ni
+fusion. Sa référence fonctionnelle est `a3b7652534a4532050d8c21d3703f957c50d61d9` ;
+les preuves et empreintes sont consignées dans `doc/v2/todo/ha7-validation.md`.
 Les archives HA6 initiales restent une livraison distincte.
 
 Ces changements ne désignent pas une nouvelle version publiée. Le numéro de

@@ -71,7 +71,9 @@ Builds et tests ont tous utilisé des commandes ordinaires, sans UltraCode.
 Archives produites dans `%TEMP%/JsTimeline-HA7-artifacts-20261031`, distinct des
 archives HA6. Les trois archives npm doivent être installées ensemble ; leur
 version 1.0.0 ne suffit pas à identifier cette livraison. La session Designer
-possède son installation. Référence du commit : à figer après cet enregistrement.
+possède son installation. Référence fonctionnelle vérifiée :
+`a3b7652534a4532050d8c21d3703f957c50d61d9`. Les changements documentaires suivants
+ne modifient pas les binaires vérifiés.
 Les 113 fichiers dist runtime, 284 éditeur et 19 export-css contenus dans les
 archives ont été comparés octet pour octet aux builds vérifiés : tous identiques.
 
