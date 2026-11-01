@@ -5,6 +5,10 @@
 Branche `v2/HA9-designer-integration-bridge`, issue de HA8
 `f6de3c592c8c90c35285332f704ef68dfcce0b41`.
 Contrat `HA9-HOST-RENDER/1` : `doc/integration/timeline-ha9-host-render-api.md`.
+Référence fonctionnelle vérifiée : `c340203e50ac84f5fb58e8f9e60dc83f3c2bdf56`.
+[PR #130](https://github.com/Kazo-ca/JsAnimationTimeline/pull/130), ouverte vers
+`v2/base`, non fusionnée ; elle inclut les prérequis HA7/HA8 des PR #128/#129.
+Les commits documentaires ultérieurs ne modifient pas les binaires vérifiés.
 
 ## Résultat
 

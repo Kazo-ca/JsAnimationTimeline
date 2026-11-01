@@ -28,6 +28,8 @@ HA9 ajoute le rendu hôte préparé sur `v2/HA9-designer-integration-bridge`, is
 du commit HA8 `f6de3c592c8c90c35285332f704ef68dfcce0b41`. Son contrat est
 `HA9-HOST-RENDER/1` dans `timeline-ha9-host-render-api.md`. La référence exacte,
 les validations et les archives sont dans `doc/v2/todo/ha9-validation.md`.
+Référence fonctionnelle HA9 : `c340203e50ac84f5fb58e8f9e60dc83f3c2bdf56`,
+[PR #130](https://github.com/Kazo-ca/JsAnimationTimeline/pull/130), non fusionnée.
 Ce checkpoint ne comprend pas la résolution sur candidat final ni la projection
 spatiale, qui restent suivies dans `doc/v2/todo/ha9-integration-bridge.md`.
 
