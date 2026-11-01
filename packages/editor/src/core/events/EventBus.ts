@@ -97,6 +97,12 @@ export class EventBus<M extends object = TimelineEventMap> {
     };
   }
 
+  /** @internal Queues the complete guarded publication, preserving batch commit/discard semantics. */
+  enqueuePublication(publish: () => void): void {
+    if (this.batch !== undefined) this.batch.push(publish);
+    else publish();
+  }
+
   /** @internal Protects post-commit observers with the same error policy as ordinary event listeners. */
   observeCommitted(action: () => void, eventName: string): void {
     try { action(); } catch (error) { this.report(error, eventName); }

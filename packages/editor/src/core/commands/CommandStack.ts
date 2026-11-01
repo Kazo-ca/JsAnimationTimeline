@@ -162,7 +162,11 @@ export class CommandStack {
   /** Exécute `command` ; retourne `true` si le document a changé. */
   execute(command: ICommand): boolean {
     const refusal = this.mutationRefusalReason;
-    if (refusal !== undefined) { this.bus.emit('command:refused', { command, reason: refusal }); return false; }
+    if (refusal !== undefined) {
+      if (this.atomic?.notifyRefusal !== undefined) this.atomic.notifyRefusal(command, refusal);
+      else this.bus.emit('command:refused', { command, reason: refusal });
+      return false;
+    }
     if (this.atomic?.routesCommands) return this.atomic.executeCommand!(command);
     const lifecycleGeneration = this.lifecycleGeneration;
     if (!this.bus.emitCancellable('command:before', { command, document: this.writer.document })) {

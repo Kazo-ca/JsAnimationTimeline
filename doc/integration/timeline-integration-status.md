@@ -39,6 +39,10 @@ Référence HA10 vérifiée : `426ae9dc4f6f4ea60923dc5e797f86a7f4cdfbb5`,
 [PR #131](https://github.com/Kazo-ca/JsAnimationTimeline/pull/131), non fusionnée.
 Archives et résultats : `doc/v2/todo/ha10-validation.md`.
 La projection spatiale commune reste un lot suivant distinct.
+Le suivi consommateur HA9B concerne le motif public manquant de certains refus
+d'undo/redo avec le renderer hôte. Voir `timeline-ha9b-history-refusals-api.md`
+et `doc/v2/todo/ha9-history-refusals.md` pour son état ; il ne faut pas le déduire
+des archives HA9 ou HA10 déjà remises.
 
 Ces changements ne désignent pas une nouvelle version publiée. Le numéro de
 version des archives locales ne suffit pas à identifier ce code. Utiliser le

@@ -25,6 +25,8 @@ export function flattenHistory(entries: readonly HistoryEntry[]): readonly (ICom
 }
 export interface IAtomicHistoryCoordinator {
   readonly faulted: boolean;
+  /** Publishes a refusal while guarding its callbacks against reentrant mutations. */
+  notifyRefusal?(command: ICommand, reason: string): void;
   assertHealthy(): void;
   allowFaultedDestroy(): boolean;
   refusal(): string | undefined;

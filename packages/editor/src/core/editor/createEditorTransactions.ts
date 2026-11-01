@@ -1,9 +1,10 @@
 // packages/editor/src/core/editor/createEditorTransactions.ts
 import { cloneHtmlAnimationContext, getHtmlStageAtomicAccess } from '@kazo-ca/timeline-runtime';
 import type { IHtmlResolutionDiagnostic, IHtmlStageAtomicAccess, ITimelineDocument, ITransportTime } from '@kazo-ca/timeline-runtime';
-import { flattenHistory, isHostEntry } from '../commands/atomicHistory';
+import { flattenHistory, isHistoryGroup, isHostEntry } from '../commands/atomicHistory';
 import type { HistoryEntry, IAtomicHistoryCoordinator, IHostHistoryEntry } from '../commands/atomicHistory';
 import type { ICommand } from '../commands/ICommand';
+import { CommandRefusedError } from '../commands/CommandRefusedError';
 import { CANCELLED_REASON } from '../commands/commandEvents';
 import { clonePropertyOperation } from '../../model/propertyTimelines/values';
 import { PropertyTimelineCommand } from '../../model/propertyTimelines/PropertyTimelineCommand';
@@ -32,6 +33,7 @@ interface AtomicRecord {
   readonly afterContexts: HtmlContexts;
   readonly properties: readonly PropertyTimelineOperation[];
   readonly commands: readonly ICommand[];
+  readonly notificationCommand: ICommand;
   readonly commandAfter: ITimelineDocument;
   readonly effect?: IHostHistoryEffect;
   readonly applied?: IPreparedHostChange;
@@ -51,6 +53,16 @@ const BUSY = 'Une transaction atomique est en cours : réessayez après sa notif
 const STALE = 'Le contexte a changé : la transaction a été annulée.';
 const RELEASED = 'Le rendu hôte a été libéré : les modifications sont interdites pendant la destruction.';
 
+function refusalReason(error: unknown): string {
+  return error instanceof CommandRefusedError ? error.reason
+    : error instanceof Error ? error.message : 'La transaction a été refusée.';
+}
+
+/** Describes a host/composite entry without giving observers impure history callbacks. */
+function describeHistory(label: string): ICommand {
+  return Object.freeze({ label, do: (doc: ITimelineDocument) => doc, undo: (doc: ITimelineDocument) => doc });
+}
+
 /** Compatibility for internal hand-built contexts without a transaction coordinator. */
 export function unavailableEditorTransactions(assertActive: (operation: string) => void): IEditorTransactions {
   const execute = (): EditorTransactionResult => {
@@ -67,7 +79,9 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
   private readonly candidate: AtomicCandidate;
   private readonly revisions = new Map<IHtmlStageAtomicAccess, number>();
   private readonly groupIds = new WeakMap<object, string>();
+  private readonly historyNotifications = new WeakMap<object, ICommand>();
   private busy = false;
+  private refusalNotification = false;
   private failure: ITransactionFault | undefined;
   private revision = 0;
   private sequence = 0;
@@ -112,7 +126,7 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
   executeCommand(command: ICommand): boolean {
     const result = this.execute(() => ({ input: { label: command.label, commands: [command] } }), true);
     if (result.status === 'faulted') throw new Error(result.fault.message);
-    if (result.status === 'refused') this.parts.bus.emit('command:refused', { command, reason: result.reason });
+    if (result.status === 'refused') this.notifyRefusal(command, result.reason);
     return result.status === 'changed';
   }
 
@@ -177,6 +191,7 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
       const record: AtomicRecord = { id: `host-transaction-${++this.sequence}`, label: input.label,
         before, after: freezeDocument(next), beforeContexts: contexts, afterContexts: nextContexts,
         properties: allProperties, commands, commandAfter, effect, applied: prepared,
+        notificationCommand: ordinaryCommand ? commands[0] : describeHistory(input.label),
         ...(conflict === undefined ? {} : { restoredDiagnostics: this.candidate.conflictBaseline(conflict.access, conflict.diagnostic.id) }) };
       const token = Object.freeze({});
       const entry: IHostHistoryEntry = { kind: 'host', label: input.label, token };
@@ -192,7 +207,10 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
     // HA10 rechecks the actual context and capabilities after a source refresh.
     // A refresh is not itself a stale confirmation: history has no original UI ticket.
     const restoresConflict = ordered.some((item) => isHostEntry(item) && this.records.get(item.token)?.restoredDiagnostics !== undefined);
-    if (!restoresConflict) { try { this.assertRevisions(); } catch { return false; } }
+    if (!restoresConflict) {
+      try { this.assertRevisions(); }
+      catch (error) { this.notifyRefusal(this.historyCommand(entry, groupToken), refusalReason(error)); return false; }
+    }
     const entries = direction === 'redo' ? ordered : [...ordered].reverse();
     const cause = direction === 'cancel' ? 'group-cancel' : direction;
     const result = this.run(cause, (before, contexts, applied) => {
@@ -242,7 +260,35 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
       return { document: next, contexts: nextContexts, label: entry.label, id, commit, groupToken };
     });
     if (result.status === 'faulted') throw new Error(result.fault.message);
+    if (result.status === 'refused') this.notifyRefusal(this.historyCommand(entry, groupToken), result.reason);
     return result.status === 'changed';
+  }
+
+  private historyCommand(entry: HistoryEntry, groupToken?: object): ICommand {
+    if (isHostEntry(entry)) {
+      const original = this.records.get(entry.token)?.notificationCommand;
+      if (original !== undefined) return original;
+    } else if (!isHistoryGroup(entry)) return entry;
+    const identity = groupToken ?? entry;
+    let command = this.historyNotifications.get(identity);
+    if (command === undefined) {
+      command = describeHistory(entry.label);
+      this.historyNotifications.set(identity, command);
+    }
+    return command;
+  }
+
+  /** History refusals arrive after rollback; busy refusals share the same callback guard. */
+  notifyRefusal(command: ICommand, reason: string): void {
+    if (this.refusalNotification) return;
+    this.parts.bus.enqueuePublication(() => {
+      if (this.refusalNotification) return;
+      const wasBusy = this.busy;
+      this.busy = true;
+      this.refusalNotification = true;
+      try { this.parts.bus.emit('command:refused', { command, reason }); }
+      finally { this.refusalNotification = false; this.busy = wasBusy; }
+    });
   }
 
   finishGroup(token: object, label: string, commit: () => void): void {
@@ -315,7 +361,7 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
       if (!committed && !compensated) this.compensate(applied, before, contexts, installed, cause);
       batch.discard();
       if (this.failure !== undefined) return { status: 'faulted', fault: this.failure };
-      return { status: 'refused', reason: error instanceof Error ? error.message : 'La transaction a été refusée.' };
+      return { status: 'refused', reason: refusalReason(error) };
     } finally {
       batch.discard();
       this.html.forEach((access) => this.revisions.set(access, access.revision));
