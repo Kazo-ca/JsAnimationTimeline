@@ -1,0 +1,18 @@
+// demo/editor/src/spatialProjection.less
+.JsTimeLine.spatial-projection-page {
+  margin: 0; color: #203c38; background: #f6f3eb; font: 16px/1.55 'Segoe UI', sans-serif;
+  * { box-sizing: border-box; }
+  main { max-width: 1480px; margin: auto; padding: 24px; }
+  h1 { font-size: clamp(28px, 4vw, 46px); line-height: 1.15; margin: 8px 0; }
+  h2 { font-size: 19px; } a { color: #166558; }
+  .eyebrow { color: #936124; font-size: 13px; text-transform: uppercase; letter-spacing: .1em; }
+  select, input, button { font: inherit; color: inherit; max-width: 100%; min-height: 40px; padding: 6px 10px; border: 1px solid #a9bdb5; border-radius: 4px; background: white; margin: 4px; }
+  button { cursor: pointer; } button:disabled { cursor: default; opacity: .55; }
+  input { width: 110px; } :focus-visible { outline: 3px solid #c46629; outline-offset: 2px; }
+  .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  iframe { display: block; border: 1px solid #a9bdb5; width: 100%; height: 312px; }
+  #css-status[data-refused='true'] { border-left: 4px solid #ac5425; padding: 12px; background: #fff0d8; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+  details { margin-top: 16px; }
+  @media (max-width: 700px) { main { padding: 12px; } .comparison { grid-template-columns: minmax(0, 1fr); } }
+}

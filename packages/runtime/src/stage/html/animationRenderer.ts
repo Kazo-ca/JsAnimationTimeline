@@ -14,6 +14,7 @@ import { InlineStyleKeeper } from './inlineStyles';
 import { HtmlPropertyInspection } from './propertyInspection';
 import type { IHtmlInspectPropertyOptions, IHtmlPropertyInspection } from './propertyInspection';
 import { composeHtmlAnimationFrame, prepareHtmlAnimation } from './preparedAnimation';
+import { validateHtmlSpatialRebinding } from './spatialRebinding';
 
 /** Candidate and live inspection use the same binding-aware kind and textual fallback. */
 function inspectHtmlProperty(inspection: HtmlPropertyInspection, elements: readonly Element[], property: string,
@@ -21,6 +22,7 @@ function inspectHtmlProperty(inspection: HtmlPropertyInspection, elements: reado
   registry: PropertyRegistry): IHtmlPropertyInspection {
   const binding = layerId === undefined ? undefined : context.bindings?.[layerId]?.[property];
   const kind = knownKind ?? (binding?.kind === 'gradient' ? htmlGradientValueKind(binding.component)
+    : binding?.kind === 'spatial' ? binding.component === 'sourceTransform' ? 'text' : 'number'
     : /color$/i.test(binding?.kind === 'style' ? binding.cssName : property) ? 'color' : 'number');
   const info = inspection.inspect(elements, property, layerId, kind, context, registry);
   return !info.editable && knownKind === undefined && kind === 'number' && binding?.kind === 'style' && binding.unit === undefined
@@ -89,6 +91,8 @@ export class HtmlAnimationRenderer {
 
   setContext(context: IHtmlAnimationContext): void {
     const next = cloneHtmlAnimationContext(context);
+    const refusal = this.doc === undefined ? undefined : validateHtmlSpatialRebinding(this.doc, this.context, this.doc, next);
+    if (refusal !== undefined) throw new Error(refusal);
     const previous = this.context;
     this.context = next;
     try { if (this.doc !== undefined) this.withOriginals(() => this.prepare(this.doc!, this.layers)); }

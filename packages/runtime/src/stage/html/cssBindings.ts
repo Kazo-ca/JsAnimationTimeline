@@ -2,6 +2,7 @@
 import type { TimelinePropertyValue } from '../../model/propertyTimeline';
 import type { PropertyRegistry } from '../../properties/PropertyRegistry';
 import type { HtmlGradientComponent, HtmlPropertyBinding, HtmlReadResult, HtmlTransformComponent, IHtmlResolvedBinding } from './cssTypes';
+import { isHtmlSpatialBinding } from './spatial';
 
 const TRANSFORMS: readonly HtmlTransformComponent[] = ['x', 'y', 'rotation', 'scaleX', 'scaleY', 'skewX', 'skewY'];
 const GEOMETRY: readonly HtmlGradientComponent[] = ['type', 'angle', 'centerX', 'centerY', 'radiusX', 'radiusY'];
@@ -30,6 +31,7 @@ export function isHtmlCssPropertyName(value: unknown): value is string {
 
 export function isHtmlPropertyBinding(value: unknown): value is HtmlPropertyBinding {
   if (!record(value)) return false;
+  if (value.kind === 'spatial') return isHtmlSpatialBinding(value);
   if (value.kind === 'style') return keys(value, ['kind', 'cssName', 'unit']) && isHtmlCssPropertyName(value.cssName)
     && (value.unit === undefined || typeof value.unit === 'string' && UNITS.has(value.unit));
   if (value.kind === 'transform') return keys(value, ['kind', 'component']) && TRANSFORMS.includes(value.component as HtmlTransformComponent);
@@ -42,6 +44,7 @@ export function isHtmlPropertyBinding(value: unknown): value is HtmlPropertyBind
 export function htmlBindingDestination(binding: HtmlPropertyBinding): string {
   if (binding.kind === 'style') return JSON.stringify(['style', binding.cssName]);
   if (binding.kind === 'transform') return JSON.stringify(['transform', binding.component]);
+  if (binding.kind === 'spatial') return JSON.stringify(['spatial', binding.component]);
   return JSON.stringify(['gradient', binding.gradientId, binding.stopId ?? '', binding.component]);
 }
 
@@ -64,7 +67,8 @@ export function resolveHtmlBinding(
     else binding = { kind: 'style', cssName: property };
   }
   if (!isHtmlPropertyBinding(binding)) return { status: 'unsupported', reason: `La destination CSS de « ${property} » est invalide.` };
-  const expected = binding.kind === 'transform' ? 'number' : binding.kind === 'gradient' ? htmlGradientValueKind(binding.component) : undefined;
+  const expected = binding.kind === 'transform' ? 'number' : binding.kind === 'spatial' ? binding.component === 'sourceTransform' ? 'text' : 'number'
+    : binding.kind === 'gradient' ? htmlGradientValueKind(binding.component) : undefined;
   if (expected !== undefined && expected !== valueKind || binding.kind === 'style' && valueKind === 'boolean') {
     return { status: 'unsupported', reason: `Le type de « ${property} » est incompatible avec sa destination CSS.` };
   }

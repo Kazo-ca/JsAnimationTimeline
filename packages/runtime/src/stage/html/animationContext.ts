@@ -2,6 +2,7 @@
 import type { IHtmlAnimationContext, IHtmlConflictResolution } from './animationTypes';
 import { isHtmlPropertyBinding } from './cssBindings';
 import { isHtmlGradientDefinition } from './gradients';
+import { isHtmlSpatialDefinition } from './spatial';
 
 function record(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -53,7 +54,7 @@ function validResolution(value: unknown): value is IHtmlConflictResolution {
 /** Strict public boundary for persisted HTML data. Throws before any DOM write. */
 export function cloneHtmlAnimationContext(input: unknown): IHtmlAnimationContext {
   const value = cloneData(input, new Set(), 0);
-  if (!record(value) || !keysAre(value, ['version', 'bindings', 'gradients', 'resolutions']) || value.version !== 1) {
+  if (!record(value) || !keysAre(value, ['version', 'bindings', 'gradients', 'spatial', 'resolutions']) || value.version !== 1) {
     throw new TypeError('Le contexte HTML doit utiliser la version 1 et des champs reconnus.');
   }
   if (value.bindings !== undefined && (!record(value.bindings) || Object.keys(value.bindings).some((key) => key === '') || !Object.values(value.bindings).every((bindings) =>
@@ -68,9 +69,16 @@ export function cloneHtmlAnimationContext(input: unknown): IHtmlAnimationContext
     new Set(value.resolutions.map((resolution) => resolution.conflictId)).size !== value.resolutions.length)) {
     throw new TypeError('Les résolutions de conflits HTML sont invalides ou dupliquées.');
   }
+  if (value.spatial !== undefined && (!record(value.spatial) || Object.keys(value.spatial).some((key) => key === '') || !Object.values(value.spatial).every((definitions) =>
+    Array.isArray(definitions) && definitions.every(isHtmlSpatialDefinition) && new Set(definitions.map((definition) => definition.id)).size === definitions.length))) {
+    throw new TypeError('Les définitions de projections spatiales HTML sont invalides.');
+  }
   const context = value as unknown as IHtmlAnimationContext;
   for (const [layerId, bindings] of Object.entries(context.bindings ?? {})) {
     for (const binding of Object.values(bindings)) {
+      if (binding.kind === 'spatial' && !context.spatial?.[layerId]?.some((definition) => definition.id === binding.projectionId)) {
+        throw new TypeError('Une association spatiale référence une définition absente.');
+      }
       if (binding.kind !== 'gradient') continue;
       const definition = context.gradients?.[layerId]?.find((gradient) => gradient.id === binding.gradientId);
       if (definition === undefined || binding.stopId !== undefined && !definition.stops.some((stop) => stop.id === binding.stopId)) {

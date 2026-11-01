@@ -20,6 +20,7 @@ const HELD_PROPERTIES = new Set([...LENGTH_PROPERTIES, 'opacity', 'visibility', 
 
 function destination(trajectory: IHtmlCssTrajectory): string {
   const { binding } = trajectory.binding;
+  if (binding.kind === 'spatial') return binding.component === 'pivotX' || binding.component === 'pivotY' ? 'transform-origin' : 'transform';
   return binding.kind === 'style' ? binding.cssName : binding.kind === 'transform' ? 'transform' : 'background-image';
 }
 
@@ -31,6 +32,12 @@ function continuousDescriptor(trajectory: IHtmlCssTrajectory): PropertyDescripto
     return trajectory.descriptor;
   }
   if (binding.kind === 'transform') return trajectory.descriptor;
+  if (binding.kind === 'spatial') {
+    if (binding.component === 'sourceTransform' && transitioning) {
+      throw new ContinuousCssError('unsupported-spatial-source-interpolation', 'La transformation source doit rester une piste de valeurs maintenues. Utilisez JavaScript ou JSON.');
+    }
+    return trajectory.descriptor;
+  }
   if (!HELD_PROPERTIES.has(binding.cssName) || transitioning && binding.cssName !== 'opacity' && !LENGTH_PROPERTIES.has(binding.cssName)) {
     throw new ContinuousCssError('unsupported-css-destination', `La destination « ${binding.cssName} » ne possède pas d'interpolation CSS vérifiée dans cet export.`);
   }
@@ -69,7 +76,7 @@ function composeFrame(target: IHtmlCssTarget, items: readonly IAnalyzedTrajector
   const values: Record<string, TimelinePropertyValue> = {};
   const bindings: Record<string, IHtmlResolvedBinding> = {};
   items.forEach((item, index) => { values[`value-${index}`] = sample(item, frame, totalFrames); bindings[`value-${index}`] = item.trajectory.binding; });
-  const composition = composeHtmlDeclarations(target.element, values, bindings, target.gradients, target.transformBase);
+  const composition = composeHtmlDeclarations(target.element, values, bindings, target.gradients, target.transformBase, target.spatial);
   const result = composition.declarations[property];
   if (composition.diagnostics.length > 0 || result === undefined) {
     throw new ContinuousCssError('invalid-css-value', composition.diagnostics[0]?.reason ?? `La déclaration « ${property} » ne peut pas être composée.`);

@@ -1,5 +1,6 @@
 // packages/export-css/src/continuous/htmlScene.ts
-import { withPreparedHtmlExport, type HtmlTransformValues, type IHtmlGradientDefinition,
+import { resolveHtmlSpatialBindings, withPreparedHtmlExport, type HtmlTransformValues, type IHtmlGradientDefinition,
+  type IHtmlSpatialDefinition,
   type IHtmlResolvedBinding, type IHtmlResolvedTrajectory, type IPreparedHtmlExport,
   type IPropertyTimeline, type ITimelineDocument, type PlaybackResult, type PropertyDescriptor,
   type PropertyRegistry } from '@kazo-ca/timeline-runtime';
@@ -21,6 +22,9 @@ export interface IHtmlCssTarget {
   readonly trajectories: readonly IHtmlCssTrajectory[];
   readonly transformBase?: HtmlTransformValues;
   readonly gradients: readonly IHtmlGradientDefinition[];
+  readonly spatial?: readonly IHtmlSpatialDefinition[];
+  /** Original capture records remain part of target grouping after physical composition remapping. */
+  readonly spatialSources?: readonly { readonly layerId: string; readonly property: string; readonly definition: IHtmlSpatialDefinition }[];
 }
 export interface IHtmlCssScene {
   readonly document: ITimelineDocument;
@@ -70,9 +74,18 @@ export function prepareHtmlCssScene(document: ITimelineDocument, options: IExpor
           trajectories.push(visible);
         }
         const gradients = [...new Map(trajectories.flatMap((item) => prepared.context.gradients?.[item.layerId] ?? []).map((gradient) => [gradient.id, gradient])).values()];
+        const spatial = resolveHtmlSpatialBindings(prepared.context, trajectories);
+        const spatialSources = trajectories.flatMap((item) => {
+          const binding = item.binding.binding;
+          if (binding.kind !== 'spatial') return [];
+          const definition = prepared.context.spatial?.[item.layerId]?.find((source) => source.id === binding.projectionId);
+          return definition === undefined ? [] : [{ layerId: item.layerId, property: item.property, definition }];
+        });
         assertCssCascade(entry.element, trajectories.map((item) => item.binding.binding.kind === 'style' ? item.binding.binding.cssName :
-          item.binding.binding.kind === 'transform' ? 'transform' : 'background-image'), rules);
-        return { selector: '', element: entry.element, trajectories, gradients, transformBase: prepared.transformBases.get(entry.element) };
+          item.binding.binding.kind === 'gradient' ? 'background-image' : item.binding.binding.kind === 'spatial' &&
+            (item.binding.binding.component === 'pivotX' || item.binding.binding.component === 'pivotY') ? 'transform-origin' : 'transform'), rules);
+        return { selector: '', element: entry.element, trajectories: trajectories.map((item, index) => ({ ...item, binding: spatial.bindings[index] })),
+          gradients, spatial: spatial.definitions, spatialSources, transformBase: prepared.transformBases.get(entry.element) };
       });
       const selectors = [...new Set(prepared.layers.map((layer) => 'selector' in layer.target ? layer.target.selector : ''))];
       return { status: 'exported', data: { document: prepared.document, registry: prepared.registry, existingKeyframeNames: rules.keyframeNames,

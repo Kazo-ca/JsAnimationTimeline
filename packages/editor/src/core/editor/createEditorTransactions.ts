@@ -1,5 +1,5 @@
 // packages/editor/src/core/editor/createEditorTransactions.ts
-import { cloneHtmlAnimationContext, getHtmlStageAtomicAccess } from '@kazo-ca/timeline-runtime';
+import { cloneHtmlAnimationContext, getHtmlStageAtomicAccess, validateHtmlSpatialRebinding } from '@kazo-ca/timeline-runtime';
 import type { IHtmlResolutionDiagnostic, IHtmlStageAtomicAccess, ITimelineDocument, ITransportTime } from '@kazo-ca/timeline-runtime';
 import { flattenHistory, isHistoryGroup, isHostEntry } from '../commands/atomicHistory';
 import type { HistoryEntry, IAtomicHistoryCoordinator, IHostHistoryEntry } from '../commands/atomicHistory';
@@ -182,6 +182,10 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
       next = this.candidate.apply(next, properties, nextContexts);
       if (conflict !== undefined) resolveAtomicHtmlConflict(conflict, next, nextContexts, properties);
       const allProperties = [...commandProperties, ...properties];
+      for (const [access, context] of nextContexts) {
+        const refusal = validateHtmlSpatialRebinding(before, contexts.get(access) ?? access.context, next, context);
+        if (refusal !== undefined) throw new Error(refusal);
+      }
       this.candidate.validate(next, allProperties, nextContexts);
       assertConfirmation();
       this.assertRevisions();

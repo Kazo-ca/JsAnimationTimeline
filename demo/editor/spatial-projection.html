@@ -1,0 +1,31 @@
+<!-- demo/editor/spatial-projection.html -->
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Projection spatiale partagée · Timeline</title></head>
+<body class="JsTimeLine spatial-projection-page"><main>
+  <header><a href="index.html">← Démonstrations</a><p class="eyebrow">JsAnimationTimeline · Projection spatiale</p>
+    <h1>Un même mouvement, quatre rendus.</h1><p>La transformation d’origine reste après les ajustements de translation, de rotation et d’échelle.</p>
+  </header>
+  <section aria-label="Exemple"><label for="scenario">Scénario</label><select id="scenario">
+    <option value="rotation">Rotation sur une translation source</option><option value="relative">Unités relatives conservées</option>
+    <option value="pivots">Pivots indépendants</option><option value="negative">Échelle nulle puis négative</option>
+    <option value="source">Source changée à l’image 51</option><option value="incompatible">Courbes incompatibles en CSS</option>
+  </select><button id="load-example" type="button">Charger et comparer</button><p id="status" role="status">Préparation de la comparaison…</p></section>
+  <form id="seek-form"><label for="frame">Image</label><input id="frame" type="number" min="1" max="101" step="any" value="51">
+    <button type="submit" data-control disabled>Afficher cette image</button><button id="resize-reference" type="button" data-control disabled>Agrandir les dimensions et la police</button>
+    <output id="frame-output">Image 51 / 101</output></form>
+  <p>L’aperçu et le CSS fidèle fonctionnent entre les images. Le JSON et le JavaScript sont échantillonnés à l’image entière précédente.</p>
+  <div class="comparison">
+    <section><h2>01 · Aperçu Timeline</h2><iframe id="preview-frame" title="Aperçu Timeline"></iframe></section>
+    <section><h2>02 · Animation CSS</h2><iframe id="css-frame" title="Animation CSS exportée"></iframe></section>
+    <section><h2>03 · Lecture JSON</h2><iframe id="json-frame" title="Lecture JSON exportée"></iframe></section>
+    <section><h2>04 · JavaScript autonome</h2><iframe id="javascript-frame" title="Lecture JavaScript autonome"></iframe></section>
+  </div>
+  <p id="css-status" role="status"></p><button id="restore" type="button" data-control disabled>Restaurer les styles sources</button>
+  <details><summary>Comparer les matrices, les pivots et les coins</summary><pre id="snapshot-output"></pre></details>
+  <details><summary>Voir le CSS exporté</summary><pre id="css-output"></pre></details>
+  <section aria-labelledby="group-heading"><h2 id="group-heading">Un groupe doit conserver ses sources.</h2>
+    <p>À 200 px de large, 50 % et 100 px produisent la même translation. À 300 px, ils diffèrent. Une animation commune doit être refusée avant de remplacer ces sources.</p>
+    <label for="group-source">Origine des déclarations</label><select id="group-source"><option value="inline">Attributs style</option><option value="stylesheet">Feuille de style</option></select>
+    <button id="probe-group" type="button">Vérifier le groupe et redimensionner</button><p id="group-status" role="status"></p>
+    <iframe id="group-frame" title="Groupe aux sources incompatibles" srcdoc="<!doctype html><html lang='fr'><body style='margin:0'></body></html>"></iframe>
+  </section>
+</main><script type="module" src="./src/spatialProjection.ts"></script></body></html>

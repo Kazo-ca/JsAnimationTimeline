@@ -18,6 +18,7 @@ import { htmlBindingDestination, resolveHtmlBinding } from './cssBindings';
 import type { IHtmlResolvedBinding } from './cssTypes';
 import { compareHtmlSpecificity, htmlTargetSpecificity } from './specificity';
 import type { HtmlSpecificity } from './specificity';
+import { htmlSpatialCompositionKey } from './spatial';
 
 interface IContribution {
   readonly source: IHtmlResolvedLayer;
@@ -70,7 +71,16 @@ function sameValue(a: TimelinePropertyValue, b: TimelinePropertyValue): boolean 
 }
 
 function bindingData(binding: IHtmlResolvedBinding): unknown {
+  if (binding.binding.kind === 'spatial') {
+    const spatial = binding.binding;
+    return { ...binding, binding: { kind: spatial.kind, component: spatial.component, ...('unit' in spatial ? { unit: spatial.unit } : {}) } };
+  }
   return binding.binding.kind === 'style' ? { ...binding, binding: { ...binding.binding, unit: binding.binding.unit ?? '' } } : binding;
+}
+
+function spatialDefinition(item: IContribution, context: IHtmlAnimationContext) {
+  const binding = item.binding.binding;
+  return binding.kind === 'spatial' ? context.spatial?.[item.source.layerId]?.find((definition) => definition.id === binding.projectionId) : undefined;
 }
 
 /** A held constant can have repeated captures without changing the rule. */
@@ -134,11 +144,13 @@ function collectContributions(
         ({ start, end, kind, easing, track: tracks?.[property] })) : timelineData(track);
       const gradientBinding = binding.value.binding.kind === 'gradient' ? binding.value.binding : undefined;
       const gradient = gradientBinding === undefined ? undefined : context.gradients?.[source.layerId]?.find((item) => item.id === gradientBinding.gradientId);
+      const spatialBinding = binding.value.binding.kind === 'spatial' ? binding.value.binding : undefined;
+      const spatial = spatialBinding === undefined ? undefined : context.spatial?.[source.layerId]?.find((item) => item.id === spatialBinding.projectionId);
       result.push({ source, property, track, binding: binding.value, destination: htmlBindingDestination(binding.value.binding),
-        equivalence: canonicalHtmlData({ history, gradient }),
+        equivalence: canonicalHtmlData({ history, gradient, spatial: spatial === undefined ? undefined : htmlSpatialCompositionKey(spatial) }),
         signature: canonicalHtmlData({ history: track === undefined ? history : {
           initialValue: track.initialValue, beforeFirst: track.beforeFirst ?? 'initial', keys: track.keys, transitions: track.transitions ?? []
-        }, gradient }) });
+        }, gradient, spatial }) });
     }
   }
   return result;
@@ -207,7 +219,10 @@ function chooseProperty(candidates: readonly IElementContribution[], state: IRes
   const prefix = constantBefore(top[0].track, horizon);
   const samePrefix = horizon <= state.totalFrames && prefix !== undefined && top.every((item) => {
     const value = constantBefore(item.track, horizon);
-    return value !== undefined && sameValue(prefix, value);
+    return value !== undefined && sameValue(prefix, value)
+      && (item.binding.binding.kind !== 'spatial' && top[0].binding.binding.kind !== 'spatial'
+        || canonicalHtmlData(bindingData(item.binding)) === canonicalHtmlData(bindingData(top[0].binding))
+          && htmlSpatialCompositionKey(spatialDefinition(item, state.context)) === htmlSpatialCompositionKey(spatialDefinition(top[0], state.context)));
   });
   if (top.length > 1 && !samePrefix && !top.every((item) => equivalent(top[0], item, state.registry))) {
     const conflict = diagnostic(known ? 'priority-conflict' : 'unsupported-specificity', top[0].destination, top, state.totalFrames,
@@ -246,6 +261,69 @@ function filterGradientComposition(candidates: readonly IElementContribution[], 
   return candidates.filter((item) => !blocked.has(item));
 }
 
+function spatialContributors(candidates: readonly IContribution[]): readonly IContribution[] {
+  const spatial = candidates.filter((entry) => entry.binding.binding.kind === 'spatial');
+  if (spatial.length === 0) return [];
+  const spatialDestination = (item: IContribution): string => {
+    const binding = item.binding.binding;
+    return binding.kind === 'spatial' && (binding.component === 'pivotX' || binding.component === 'pivotY') ? 'origin' : 'transform';
+  };
+  return candidates.filter((entry) => {
+    const binding = entry.binding.binding;
+    return binding.kind === 'spatial' || binding.kind === 'transform' && spatial.some((item) => spatialDestination(item) === 'transform')
+      || binding.kind === 'style' && (binding.cssName === 'transform' && spatial.some((item) => spatialDestination(item) === 'transform')
+        || binding.cssName === 'transform-origin' && spatial.some((item) => spatialDestination(item) === 'origin'));
+  });
+}
+
+/** Check only branches which can coexist; the existing explicit choice remains projection-wide. */
+function filterSpatialComposition(properties: readonly IChosenProperty[], state: IResolutionState): readonly IChosenProperty[] {
+  const snapshotsOf = (selected: readonly IChosenProperty[]): readonly (readonly IContribution[])[] => {
+    const boundaries = new Set([1]);
+    const visit = (property: IChosenProperty): void => {
+      if (property.before === undefined) return;
+      if (property.before.until <= state.totalFrames) boundaries.add(property.before.until);
+      if (property.before.underlying !== undefined) visit(property.before.underlying);
+    };
+    selected.forEach(visit);
+    return [...boundaries].map((frame) => spatialContributors(selected.flatMap((property) => {
+      const active = choiceAt(property, frame);
+      return active === undefined ? [] : [active.contribution];
+    })));
+  };
+  const structure = (entry: IContribution): string => {
+    const binding = entry.binding.binding;
+    return binding.kind !== 'spatial' ? binding.kind : htmlSpatialCompositionKey(spatialDefinition(entry, state.context));
+  };
+  const snapshots = snapshotsOf(properties);
+  const concurrent = [...new Set(snapshots.filter((snapshot) => new Set(snapshot.map(structure)).size > 1).flat())];
+  if (concurrent.length === 0) return properties;
+  const destinations = new Set(concurrent.map((entry) => entry.destination));
+  const branches = properties.filter((property) => destinations.has(property.contribution.destination));
+  const contributionsOf = (property: IChosenProperty): readonly IContribution[] => [property.contribution,
+    ...(property.before?.underlying === undefined ? [] : contributionsOf(property.before.underlying))];
+  const related = [...new Set(branches.flatMap(contributionsOf))];
+  const conflict = diagnostic('composition-conflict', 'spatial-projection', related, state.totalFrames,
+    'Des composantes simultanées utilisent des sources spatiales incompatibles. Le choix d’un objet s’applique à toute la projection et à toute l’animation, pas seulement à la période de conflit.');
+  const branchData = (property: IChosenProperty): unknown => ({ contribution: contributionData(property.contribution), useFirstKey: property.useFirstKey,
+    ...(property.before === undefined ? {} : { before: { until: property.before.until, policy: property.before.policy,
+      underlying: property.before.underlying === undefined ? undefined : branchData(property.before.underlying) } }) });
+  const retainFor = (layerId: string | undefined): readonly IChosenProperty[] => {
+    const blocked = new Set(related.filter((entry) => entry.source.layerId !== layerId));
+    const retain = (property: IChosenProperty): IChosenProperty | undefined => {
+      const underlying = property.before?.underlying === undefined ? undefined : retain(property.before.underlying);
+      if (blocked.has(property.contribution)) return underlying;
+      return property.before === undefined ? property : { ...property, before: { ...property.before, underlying } };
+    };
+    return properties.flatMap((property) => { const retained = retain(property); return retained === undefined ? [] : [retained]; });
+  };
+  const safe = { ...conflict,
+    signature: canonicalHtmlData({ signature: conflict.signature, branches: [...branches].sort((a, b) => compareContributions(a.contribution, b.contribution)).map(branchData) }),
+    choices: conflict.choices.filter((layerId) => snapshotsOf(retainFor(layerId)).every((snapshot) => new Set(snapshot.map(structure)).size <= 1)) };
+  const chosen = explicitChoice(state, safe);
+  return retainFor(chosen);
+}
+
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const BORDER_PARTS = ['width', 'style', 'color'];
 const SHORTHANDS: Readonly<Record<string, readonly string[]>> = {
@@ -266,6 +344,7 @@ function footprint(item: IContribution): readonly string[] {
   const binding = item.binding.binding;
   if (binding.kind === 'gradient') return ['css:background-image'];
   if (binding.kind === 'transform') return [`transform:${binding.component}`];
+  if (binding.kind === 'spatial') return [binding.component === 'pivotX' || binding.component === 'pivotY' ? 'css:transform-origin' : 'css:transform'];
   if (binding.cssName === 'transform') return ['x', 'y', 'rotation', 'scaleX', 'scaleY', 'skewX', 'skewY'].map((part) => `transform:${part}`);
   return (SHORTHANDS[binding.cssName] ?? [binding.cssName]).map((name) => `css:${name}`);
 }
@@ -273,6 +352,7 @@ function footprint(item: IContribution): readonly string[] {
 function compositionOverlap(a: IContribution, b: IContribution): boolean {
   if (a.destination === b.destination) return false;
   if (a.binding.binding.kind === 'gradient' && b.binding.binding.kind === 'gradient') return false;
+  if (a.binding.binding.kind === 'spatial' || b.binding.binding.kind === 'spatial') return false;
   const left = footprint(a);
   return footprint(b).some((name) => left.includes(name));
 }
@@ -364,10 +444,11 @@ export function prepareHtmlResolution(
     filterComposition(items, state).forEach((item) => {
       byDestination.set(item.destination, [...(byDestination.get(item.destination) ?? []), item]);
     });
-    chosen.set(element, Array.from(byDestination.values()).flatMap((candidates) => {
+    const priorities = Array.from(byDestination.values()).flatMap((candidates) => {
       const winner = chooseProperty(candidates, state);
       return winner === undefined ? [] : [winner];
-    }));
+    });
+    chosen.set(element, filterSpatialComposition(priorities, state));
   });
   staleDiagnostics(state);
   const frameAt = (frame: number): number => {
@@ -399,6 +480,13 @@ export function prepareHtmlResolution(
       if (item === undefined) return { status: 'refused', code: 'unavailable', reason: 'Résolvez le conflit ou les valeurs différentes de cette propriété avant de capturer une clé.' };
       if (canonicalHtmlData(bindingData(item.contribution.binding)) !== canonicalHtmlData(bindingData(binding))) {
         return { status: 'refused', code: 'unavailable', reason: 'La propriété prioritaire utilise un type ou une unité différente. Harmonisez les associations avant de capturer une clé.' };
+      }
+      if (binding.binding.kind === 'spatial') {
+        const requestedBinding = binding.binding;
+        const definition = context.spatial?.[source.layerId]?.find((entry) => entry.id === requestedBinding.projectionId);
+        if (htmlSpatialCompositionKey(definition) !== htmlSpatialCompositionKey(spatialDefinition(item.contribution, context))) {
+          return { status: 'refused', code: 'unavailable', reason: 'La propriété prioritaire utilise une source spatiale différente. Harmonisez explicitement les projections avant de capturer une clé.' };
+        }
       }
       values.push(sampleValue(item, frameAt(frame), registry));
     }

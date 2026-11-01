@@ -5,6 +5,8 @@ import { readHtmlTransform } from './cssTransform';
 import { parseHtmlColor, parseHtmlNumber } from './cssValue';
 import { readHtmlGradientValue } from './gradients';
 import { isHtmlPropertyBinding } from './cssBindings';
+import { readHtmlSpatialValue } from './spatial';
+import type { IHtmlSpatialDefinition } from './spatialTypes';
 
 /** Obtain effective styles in the element's realm; the caller must suspend owned preview writes first. */
 export function readHtmlComputedStyle(element: Element): HtmlReadResult<CSSStyleDeclaration> {
@@ -21,10 +23,11 @@ export function captureHtmlTransformBase(element: Element): HtmlReadResult<HtmlT
 }
 
 export function readHtmlPropertyBase(
-  element: Element, resolved: IHtmlResolvedBinding, gradients: readonly IHtmlGradientDefinition[] = []
+  element: Element, resolved: IHtmlResolvedBinding, gradients: readonly IHtmlGradientDefinition[] = [], spatial: readonly IHtmlSpatialDefinition[] = []
 ): HtmlReadResult<TimelinePropertyValue> {
   const { binding, valueKind } = resolved;
   if (!isHtmlPropertyBinding(binding)) return { status: 'unsupported', reason: 'La destination CSS est invalide.' };
+  if (binding.kind === 'spatial') return readHtmlSpatialValue(binding, spatial);
   if (binding.kind === 'gradient') return readHtmlGradientValue(binding, gradients);
   if (binding.kind === 'transform') {
     const base = captureHtmlTransformBase(element);

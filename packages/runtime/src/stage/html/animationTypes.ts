@@ -5,12 +5,14 @@ import type { IPropertyTimeline, TimelinePropertyValue } from '../../model/prope
 import type { PropertyDescriptor } from '../../properties/types';
 import type { LayerTarget } from '../../model/target';
 import type { HtmlPropertyBinding, IHtmlGradientDefinition, IHtmlResolvedBinding } from './cssTypes';
+import type { IHtmlSpatialDefinition } from './spatialTypes';
 
 /** Saved alongside the generic timeline, never mixed into its temporal model. */
 export interface IHtmlAnimationContext {
   readonly version: 1;
   readonly bindings?: Readonly<Record<string, Readonly<Record<string, HtmlPropertyBinding>>>>;
   readonly gradients?: Readonly<Record<string, readonly IHtmlGradientDefinition[]>>;
+  readonly spatial?: Readonly<Record<string, readonly IHtmlSpatialDefinition[]>>;
   readonly resolutions?: readonly IHtmlConflictResolution[];
 }
 

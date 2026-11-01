@@ -37,6 +37,15 @@ describe('continuous CSS destination compilation', () => {
     ] }, 100)).toThrow(/composantes/);
   });
 
+  it('does not mistake equal samples around an easing excursion for a held interval', () => {
+    const x = { ...track(0, 100, 1, 101), transitions: [{ id: 'x', fromFrame: 1, toFrame: 101,
+      easing: { kind: 'bezier' as const, x1: 0, y1: 0, x2: 1, y2: -1 / 3 } }] };
+    const held: IPropertyTimeline = { initialValue: number(0), keys: [{ frame: 51, value: number(0) }] };
+    expect(() => compileContinuousTarget({ selector: '#box', element: document.createElement('div'), gradients: [], transformBase, trajectories: [
+      trajectory('x', x, { kind: 'transform', component: 'x' }), trajectory('y', held, { kind: 'transform', component: 'y' })
+    ] }, 101)).toThrow(/découpée/);
+  });
+
   it('refuses intrinsic CSS clamping and unsupported numeric interpolation', () => {
     const target = { selector: '#box', element: document.createElement('div'), gradients: [] };
     expect(() => compileContinuousTarget({ ...target, trajectories: [trajectory('opacity', track(-1, 2), { kind: 'style', cssName: 'opacity' })] }, 100)).toThrow(/bornage/);

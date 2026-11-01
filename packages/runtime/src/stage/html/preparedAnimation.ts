@@ -8,6 +8,7 @@ import type { IHtmlGradientDefinition, IHtmlResolvedBinding } from './cssTypes';
 import { needsVisibility } from './keyframes';
 import type { HtmlPropertyInspection, IHtmlPropertyInspection } from './propertyInspection';
 import { prepareHtmlResolution } from './resolution';
+import { resolveHtmlSpatialBindings } from './spatial';
 
 export interface IPreparedHtmlAnimation {
   readonly plan: IHtmlResolutionPlan;
@@ -65,14 +66,15 @@ export function composeHtmlAnimationFrame(doc: ITimelineDocument, layers: readon
     const values: Record<string, TimelinePropertyValue> = {};
     const bindings: Record<string, IHtmlResolvedBinding> = {};
     const gradients = new Map<string, IHtmlGradientDefinition>();
+    const spatial = resolveHtmlSpatialBindings(context, state.properties);
     state.properties.forEach((property, index) => {
       const name = `value-${index}`;
-      values[name] = property.value; bindings[name] = property.binding;
+      values[name] = property.value; bindings[name] = spatial.bindings[index];
       for (const gradient of context.gradients?.[property.layerId] ?? []) gradients.set(gradient.id, gradient);
     });
     const transform = inspection.transform(state.element);
     const css = composeHtmlDeclarations(state.element, values, bindings, [...gradients.values()],
-      transform.status === 'value' ? transform.value : undefined);
+      transform.status === 'value' ? transform.value : undefined, spatial.definitions);
     for (const issue of css.diagnostics) {
       const property = state.properties[Number(issue.property.slice('value-'.length))];
       const layer = layers.find((entry) => entry.layerId === property?.layerId);

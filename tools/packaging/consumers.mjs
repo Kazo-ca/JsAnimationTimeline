@@ -144,7 +144,37 @@ try {
     write(file, readFileSync(join(temp, 'host-render-consumer.ts'), 'utf8'));
     run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2020', file], temp);
   }
-  console.log('npm: three archives, license, ESM, CommonJS, CSS, playback, host transactions, host rendering, inspection stage and TypeScript Bundler/NodeNext OK');
+  write('spatial-consumer.mjs', [
+    "import assert from 'node:assert/strict';",
+    "import { createRequire } from 'node:module';",
+    "import { composeHtmlSpatial, cloneHtmlAnimationContext, resolveHtmlSpatialBindings } from '@kazo-ca/timeline-runtime';",
+    "const require = createRequire(import.meta.url);",
+    "assert.equal(typeof require('@kazo-ca/timeline-runtime').composeHtmlSpatial, 'function');",
+    "assert.equal(typeof resolveHtmlSpatialBindings, 'function');",
+    "const definition = { id: 'geometry', version: 1, composition: 'prepend-trs', sourceTransform: 'translateX(100px)', origin: { x: { value: 50, unit: '%' }, y: { value: 50, unit: '%' }, z: { value: 7, unit: 'px' } }, provenance: { transform: { kind: 'authored', authoredValue: 'translateX(100px)', computedValue: 'matrix(1,0,0,1,100,0)' }, origin: { kind: 'authored', authoredValue: '50% 50% 7px', computedValue: '50px 50px 7px' } } };",
+    "const binding = { kind: 'spatial', projectionId: 'geometry', component: 'rotation', unit: 'deg' };",
+    "const context = cloneHtmlAnimationContext({ version: 1, bindings: { box: { rotation: binding } }, spatial: { box: [definition] } });",
+    "const result = composeHtmlSpatial(context.spatial.box[0], [{ binding, value: { kind: 'number', value: 45 } }]);",
+    "assert.equal(result.status, 'value');",
+    "assert.equal(result.value.transform, 'translate(0px, 0px) rotate(45deg) scale(1, 1) translateX(100px)');",
+  ].join('\n'));
+  run(process.execPath, ['spatial-consumer.mjs'], temp);
+  write('spatial-consumer.ts', [
+    "import { composeHtmlDeclarations, composeHtmlSpatial, resolveHtmlSpatialBindings, type IHtmlSpatialDefinition, type HtmlSpatialBinding, type IHtmlAnimationContext } from '@kazo-ca/timeline-runtime';",
+    "export function project(element: Element, definition: IHtmlSpatialDefinition, binding: HtmlSpatialBinding, context: IHtmlAnimationContext): void {",
+    "  const value = { kind: 'number' as const, value: 45 };",
+    "  composeHtmlSpatial(definition, [{ binding, value }]);",
+    "  composeHtmlDeclarations(element, { angle: value }, { angle: { binding, valueKind: 'number' } }, [], undefined, [definition]);",
+    "  resolveHtmlSpatialBindings(context, [{ layerId: 'box', binding: { binding, valueKind: 'number' } }]);",
+    "}",
+  ].join('\n'));
+  run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2020', 'spatial-consumer.ts'], temp);
+  for (const extension of ['mts', 'cts']) {
+    const file = `spatial-consumer.${extension}`;
+    write(file, readFileSync(join(temp, 'spatial-consumer.ts'), 'utf8'));
+    run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2020', file], temp);
+  }
+  console.log('npm: three archives, license, ESM, CommonJS, CSS, playback, host transactions, host rendering, spatial projection, inspection stage and TypeScript Bundler/NodeNext OK');
 
   mkdirSync(join(temp, 'nuget-feed'));
   copyFileSync(nupkg, join(temp, 'nuget-feed', basename(nupkg)));

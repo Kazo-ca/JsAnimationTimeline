@@ -30,7 +30,8 @@ export function htmlExportScope(root: ParentNode, requested?: string): { readonl
   return { document, selector: `:is(${selector}) ` };
 }
 function signature(target: IHtmlCssTarget): string {
-  return JSON.stringify({ trajectories: target.trajectories, transform: target.transformBase, gradients: target.gradients });
+  return JSON.stringify({ trajectories: target.trajectories, transform: target.transformBase, gradients: target.gradients,
+    spatial: target.spatial, spatialSources: target.spatialSources });
 }
 
 /** Membership plus complete trajectory identity, never equal integer snapshots, defines a group. */

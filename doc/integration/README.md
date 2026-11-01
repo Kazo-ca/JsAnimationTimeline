@@ -26,6 +26,9 @@ peuvent varier selon l'outil : ils ne constituent pas un mécanisme de coordinat
    l'état de livraison indiqué dans ce contrat avant de l'utiliser.
 8. [Refus d'historique HA9B](timeline-ha9b-history-refusals-api.md) — complément
    pour préserver le motif public d'undo/redo avec le renderer hôte.
+9. [Projection spatiale HA11](timeline-ha11-spatial-api.md) — ajustements sur une
+   source conservée, pivots indépendants et sorties partagées. Lire son statut
+   de livraison avant de remplacer une référence consommée.
 
 Les documents suffisent sans relire les discussions et sans suivre les références
 numérotées aux anciennes questions. Les cas concernés sont décrits intégralement.
