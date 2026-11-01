@@ -121,6 +121,7 @@ export class EditorStageHost implements IStageRenderer {
   /** L'arrêt de la lecture passe outre la retenue : le rendu qui suit aussi. */
   private stopPassThrough = false;
   private atomicErrors: unknown[] | undefined;
+  private atomicRefresh: ((layerId?: string) => void) | undefined;
 
   /** Charge le document courant du Store ; lève l'erreur d'une scène qui le refuse (après avoir tout relâché). */
   constructor(options: IEditorStageHostOptions) {
@@ -219,8 +220,22 @@ export class EditorStageHost implements IStageRenderer {
   }
 
   refreshTargets(layerId?: string): void {
+    if (this.atomicRefresh !== undefined) { this.atomicRefresh(layerId); return; }
     this.host?.refresh(layerId);
   }
+
+  /** @internal Rebind inside the prepared host-render boundary. */
+  refreshAtomic(layerId?: string): void {
+    const errors: unknown[] = [];
+    this.atomicErrors = errors;
+    try {
+      this.host?.refresh(layerId);
+      if (errors.length > 0) throw errors[0];
+    } finally { this.atomicErrors = undefined; }
+  }
+
+  /** @internal Lifecycle hook for an opt-in host renderer. */
+  attachAtomicRefresh(refresh: (layerId?: string) => void): void { this.atomicRefresh = refresh; }
 
   listTargets(): readonly ITargetInfo[] {
     return Object.freeze(this.stages.flatMap((stage) => this.guard(() => stage.targets?.list() ?? [], [])));
@@ -237,12 +252,12 @@ export class EditorStageHost implements IStageRenderer {
   }
 
   /** @internal Atomic commits require a synchronous accepted stage document and rendered frame. */
-  installAtomic(doc: ITimelineDocument): void {
+  installAtomic(doc: ITimelineDocument, time: ITransportTime = this.now().time): void {
     const errors: unknown[] = [];
     this.atomicErrors = errors;
     try {
       this.loadNow(doc);
-      this.host?.render(this.now().time);
+      this.host?.render(time);
       if (errors.length > 0) throw errors[0];
       this.announceMissing();
     } finally { this.atomicErrors = undefined; }

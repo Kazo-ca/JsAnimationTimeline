@@ -19,6 +19,7 @@ import type { EditorStageOption, IEditorStage, StageErrorHandler } from '../stag
 import type { StoreWarningHandler } from '../store/Store';
 import type { IEditorPropertyTimelines } from './propertyTimelineTypes';
 import type { IEditorTransactions } from './transactionTypes';
+import type { IEditorHostRenderer } from './hostRendererTypes';
 
 /** Options for a property edit. */
 export interface SetPropertyOptions {
@@ -52,6 +53,8 @@ export interface EditorOptions {
    * ne détruit jamais une scène fournie : il relâche les calques puis la détache.
    */
   readonly stage?: EditorStageOption;
+  /** Opt-in prepared preview writer. Use inspection-only HTML stages with this writer. */
+  readonly hostRenderer?: IEditorHostRenderer;
   /** Reçoit les erreurs levées par les scènes. Par défaut : `console.error` (la lecture continue). */
   readonly onStageError?: StageErrorHandler;
   /**

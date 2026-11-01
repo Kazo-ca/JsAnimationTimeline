@@ -65,6 +65,11 @@ export interface IEditorParts {
  * `destroy` et à l'annulation d'un démarrage raté.
  */
 export function releaseEditorParts(parts: IEditorParts): void {
+  try { parts.commands.releaseAtomicRenderer(); }
+  finally { releaseCoreParts(parts); }
+}
+
+function releaseCoreParts(parts: IEditorParts): void {
   parts.commands.invalidatePending();
   parts.playback.destroy();
   parts.stageHost.destroy();

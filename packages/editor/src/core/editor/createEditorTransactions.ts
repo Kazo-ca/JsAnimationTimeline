@@ -1,6 +1,6 @@
 // packages/editor/src/core/editor/createEditorTransactions.ts
 import { cloneHtmlAnimationContext, getHtmlStageAtomicAccess } from '@kazo-ca/timeline-runtime';
-import type { IHtmlStageAtomicAccess, ITimelineDocument } from '@kazo-ca/timeline-runtime';
+import type { IHtmlStageAtomicAccess, ITimelineDocument, ITransportTime } from '@kazo-ca/timeline-runtime';
 import { flattenHistory, isHostEntry } from '../commands/atomicHistory';
 import type { HistoryEntry, IAtomicHistoryCoordinator, IHostHistoryEntry } from '../commands/atomicHistory';
 import type { ICommand } from '../commands/ICommand';
@@ -12,10 +12,12 @@ import type { IEditorParts } from './Editor';
 import { AtomicCandidate, sameAtomicData } from './atomicCandidate';
 import type { HtmlContexts } from './atomicCandidate';
 import { freezeAtomicDocument as freezeDocument } from './atomicDocument';
+import { assertSynchronousHostChange, prepareHostRender, validatePreparedHostChange } from './prepareHostRender';
+import type { HostRenderCause, IEditorHostRenderer } from './hostRendererTypes';
 import type { EditorTransactionResult, IEditorTransactionRequest, IEditorTransactions, IHostHistoryEffect,
   IPreparedHostChange, ITransactionFault, TransactionChangedEvent, TransactionDirection } from './transactionTypes';
 
-type Parts = Pick<IEditorParts, 'bus' | 'store' | 'commands' | 'stageHost' | 'registry' | 'lifecycle'>;
+type Parts = Pick<IEditorParts, 'bus' | 'store' | 'commands' | 'stageHost' | 'registry' | 'lifecycle' | 'playback'>;
 interface AtomicRecord {
   readonly id: string;
   readonly label: string;
@@ -40,6 +42,7 @@ interface PreparedTransaction {
 }
 const BUSY = 'Une transaction atomique est en cours : réessayez après sa notification.';
 const STALE = 'Le contexte a changé : la transaction a été annulée.';
+const RELEASED = 'Le rendu hôte a été libéré : les modifications sont interdites pendant la destruction.';
 
 /** Compatibility for internal hand-built contexts without a transaction coordinator. */
 export function unavailableEditorTransactions(assertActive: (operation: string) => void): IEditorTransactions {
@@ -60,8 +63,9 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
   private failure: ITransactionFault | undefined;
   private revision = 0;
   private sequence = 0;
+  private rendererReleased = false;
 
-  constructor(private readonly parts: Parts) {
+  constructor(private readonly parts: Parts, private readonly renderer?: IEditorHostRenderer) {
     this.html = parts.stageHost.stages.flatMap((stage) => {
       const access = getHtmlStageAtomicAccess(stage); return access === undefined ? [] : [access];
     });
@@ -72,21 +76,46 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
     }
     parts.commands.attachAtomic(this);
     parts.bus.once('editor:destroying', () => this.html.forEach((access) => access.guard(() => {})));
+    if (renderer !== undefined) {
+      parts.playback.attachHostRendering(() => this.assertMutable(), (time, cause, draw, publish) => {
+        if (this.refusal() !== undefined || this.rendererReleased) return;
+        this.renderOnly(cause, time, draw, publish);
+      });
+      parts.stageHost.attachAtomicRefresh((layerId) => this.renderOnly('refresh', parts.playback.time,
+        () => parts.stageHost.refreshAtomic(layerId)));
+      parts.store.attachAtomicLoad((document) => this.load(document));
+      this.renderOnly('initialize', parts.playback.time);
+    }
   }
 
   facade(): IEditorTransactions {
     const readFault = (): ITransactionFault | undefined => this.failure;
     return Object.freeze({ get fault() { return readFault(); }, execute: (request: IEditorTransactionRequest) => this.execute(request) });
   }
-  refusal(): string | undefined { return this.busy ? BUSY : this.failure?.message; }
+  refusal(): string | undefined { return this.busy ? BUSY : this.failure?.message ?? (this.rendererReleased ? RELEASED : undefined); }
   get faulted(): boolean { return this.failure !== undefined; }
   assertHealthy(): void { if (this.failure !== undefined) throw new Error(this.failure.message); }
-  allowFaultedDestroy(): boolean { return !this.busy && this.failure !== undefined; }
+  allowFaultedDestroy(): boolean { return !this.busy && (this.failure !== undefined || this.rendererReleased); }
+  get routesCommands(): boolean { return this.renderer !== undefined; }
+  executeCommand(command: ICommand): boolean {
+    const result = this.execute({ label: command.label, commands: [command] }, true);
+    if (result.status === 'faulted') throw new Error(result.fault.message);
+    if (result.status === 'refused') this.parts.bus.emit('command:refused', { command, reason: result.reason });
+    return result.status === 'changed';
+  }
 
-  execute(input: IEditorTransactionRequest): EditorTransactionResult {
+  prepareDestroy(): void {
+    if (this.renderer === undefined || this.rendererReleased) return;
+    // A faulted preview remains untouched so teardown cannot hide failed compensation.
+    if (this.failure === undefined) this.renderOnly('destroy', this.parts.playback.time);
+    this.rendererReleased = true;
+  }
+
+  execute(input: IEditorTransactionRequest, ordinaryCommand = false): EditorTransactionResult {
     this.parts.lifecycle.assertActive('transactions.execute');
     if (this.failure !== undefined) return { status: 'faulted', fault: this.failure };
-    if (this.busy) return { status: 'refused', reason: BUSY };
+    const refusal = this.refusal();
+    if (refusal !== undefined) return { status: 'refused', reason: refusal };
     return this.run('execute', (before, contexts, applied) => {
       if (typeof input.label !== 'string' || input.label.trim() === '') throw new Error('La transaction doit avoir un libellé.');
       this.assertCurrent(input.isCurrent);
@@ -94,7 +123,7 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
       const commands = [...(input.commands ?? [])];
       // The existing cancellable command channel also guards a property/context/effect-only batch.
       const intent = { label: input.label, do: (doc: ITimelineDocument) => doc, undo: (doc: ITimelineDocument) => doc };
-      if (!this.parts.bus.emitCancellable('command:before', { command: intent, document: before })) throw new Error(CANCELLED_REASON);
+      if (!ordinaryCommand && !this.parts.bus.emitCancellable('command:before', { command: intent, document: before })) throw new Error(CANCELLED_REASON);
       const nextContexts = new Map(contexts);
       if (input.htmlContext !== undefined) {
         const stage = this.parts.stageHost.stages.find((entry) => entry.id === input.htmlContext!.stageId);
@@ -197,7 +226,7 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
     } finally { batch.discard(); this.busy = false; }
   }
 
-  private run(cause: TransactionChangedEvent['cause'], prepare: (before: ITimelineDocument, contexts: HtmlContexts,
+  private run(cause: TransactionChangedEvent['cause'] | 'load', prepare: (before: ITimelineDocument, contexts: HtmlContexts,
     applied: AppliedParticipant[]) => PreparedTransaction | undefined): EditorTransactionResult {
     const { bus, store, commands } = this.parts;
     const before = store.document;
@@ -207,6 +236,8 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
     let installed = false;
     let compensated = false;
     let committed = false;
+    const renderVersion = this.parts.playback.renderVersion;
+    let candidateTime = this.parts.playback.time;
     this.busy = true;
     const batch = bus.beginBatch();
     try {
@@ -215,8 +246,10 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
           this.candidate.captureBaseline(before, contexts);
           const result = prepare(before, contexts, applied);
           if (result === undefined) return undefined;
+          candidateTime = this.renderer === undefined ? this.parts.playback.time : this.parts.playback.timeForDocument(result.document);
+          this.assertRenderVersion(renderVersion);
           installed = true;
-          this.install(result.document, result.contexts);
+          this.install(result.document, result.contexts, candidateTime);
           return result;
         } catch (error) {
           this.compensate(applied, before, contexts, installed, cause); compensated = true;
@@ -224,14 +257,22 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
         }
       });
       if (prepared === undefined) { batch.discard(); return { status: 'noop' }; }
+      this.html.forEach((access) => this.revisions.set(access, access.revision));
+      // Source inspection has ended; its restoration must never overwrite the host's new preview.
+      this.applyRender(prepared.document, prepared.contexts, candidateTime, cause, applied, renderVersion);
+      if (this.renderer !== undefined) this.parts.playback.commitDocumentTiming(prepared.document, candidateTime, () => {
+        this.assertRenderVersion(renderVersion);
+        this.assertRevisions();
+      });
       prepared.commit();
       committed = true;
       const groupToken = prepared.groupToken ?? commands.groupToken;
       const revision = ++this.revision;
-      store.publishAtomic(before, { cause, label: prepared.label, groupToken });
+      if (cause === 'load') store.publishAtomicLoad(before);
+      else store.publishAtomic(before, { cause, label: prepared.label, groupToken });
       commands.notifyAtomicHistory();
       const phase = cause === 'group-cancel' ? 'cancel' : commands.isGrouping ? 'preview' : 'commit';
-      bus.emit('transaction:changed', { transactionId: prepared.id, label: prepared.label, revision, phase, cause,
+      if (cause !== 'load') bus.emit('transaction:changed', { transactionId: prepared.id, label: prepared.label, revision, phase, cause,
         ...(groupToken === undefined ? {} : { groupId: this.groupId(groupToken) }) });
       batch.commit();
       return { status: 'changed', revision };
@@ -247,10 +288,10 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
     }
   }
 
-  private install(document: ITimelineDocument, contexts: HtmlContexts): void {
+  private install(document: ITimelineDocument, contexts: HtmlContexts, time?: ITransportTime): void {
     for (const [access, context] of contexts) if (!sameAtomicData(access.context, context)) access.installContext(context);
     this.parts.store.installAtomic(freezeDocument(document));
-    this.parts.stageHost.installAtomic(document);
+    this.parts.stageHost.installAtomic(document, time);
   }
 
   private revalidateCommands(record: AtomicRecord, direction: 'undo' | 'redo' | 'cancel'): void {
@@ -268,7 +309,7 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
   }
 
   private compensate(applied: readonly AppliedParticipant[], before: ITimelineDocument, contexts: HtmlContexts,
-    installed: boolean, cause: TransactionChangedEvent['cause']): void {
+    installed: boolean, cause: HostRenderCause): void {
     const faults: string[] = [];
     for (const participant of [...applied].reverse()) {
       try { this.assertSynchronous(participant.change.rollback()); } catch { faults.push(participant.id); }
@@ -286,14 +327,59 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
     this.assertSynchronous(change.apply());
   }
   private prepareEffect(effect: IHostHistoryEffect, direction: TransactionDirection): IPreparedHostChange {
-    const prepared = effect.prepare(direction);
-    this.assertSynchronous(prepared);
-    if (prepared === null || typeof prepared !== 'object' || typeof prepared.changed !== 'boolean' ||
-      typeof prepared.apply !== 'function' || typeof prepared.rollback !== 'function') throw new Error('L’effet hôte préparé est invalide.');
-    return prepared;
+    return validatePreparedHostChange(effect.prepare(direction));
   }
-  private assertSynchronous(value: unknown): void {
-    if (typeof value === 'object' && value !== null && 'then' in value) throw new Error('Les effets hôtes doivent être synchrones.');
+  private assertSynchronous(value: unknown): void { assertSynchronousHostChange(value); }
+  private assertMutable(): void { const reason = this.refusal(); if (reason !== undefined) throw new Error(reason); }
+  private assertRenderVersion(version: number): void {
+    if (this.renderer !== undefined && this.parts.playback.renderVersion !== version) throw new Error(STALE);
+  }
+  private applyRender(document: ITimelineDocument, contexts: HtmlContexts, time: ITransportTime,
+    cause: HostRenderCause, applied: AppliedParticipant[], version: number): void {
+    if (this.renderer === undefined) return;
+    if (this.rendererReleased) throw new Error(RELEASED);
+    const prepared = prepareHostRender(this.renderer, document, contexts, this.parts.stageHost.stages, this.parts.registry, time, cause);
+    this.assertRenderVersion(version);
+    this.assertRevisions();
+    if (prepared.changed) this.applyParticipant(applied, 'host-renderer', prepared);
+    this.assertRenderVersion(version);
+    this.assertRevisions();
+  }
+  private load(document: ITimelineDocument): void {
+    this.assertMutable();
+    const result = this.run('load', (_before, contexts) => {
+      this.candidate.validate(document, [], contexts, false);
+      return { document: freezeDocument(document), contexts, label: 'Charger le document', id: '',
+        commit: () => this.parts.commands.clearAtomic() };
+    });
+    if (result.status === 'refused') throw new Error(result.reason);
+    if (result.status === 'faulted') throw new Error(result.fault.message);
+  }
+
+  /** Navigation and lifecycle use the same journal, without adding an undo entry. */
+  private renderOnly(cause: HostRenderCause, time: ITransportTime, beforeRender?: () => void, publish?: () => void): void {
+    this.assertMutable();
+    const before = this.parts.store.document;
+    const contexts = new Map(this.html.map((access) => [access, access.context]));
+    this.html.forEach((access) => this.revisions.set(access, access.revision));
+    const version = this.parts.playback.renderVersion;
+    const applied: AppliedParticipant[] = [];
+    const batch = this.parts.bus.beginBatch();
+    this.busy = true;
+    try {
+      this.withSources(() => beforeRender?.());
+      this.applyRender(before, contexts, time, cause, applied, version);
+      publish?.();
+      batch.commit();
+    } catch (error) {
+      this.compensate(applied, before, contexts, false, cause);
+      batch.discard();
+      throw this.failure === undefined ? error : new Error(this.failure.message);
+    } finally {
+      batch.discard();
+      this.html.forEach((access) => this.revisions.set(access, access.revision));
+      this.busy = false;
+    }
   }
   private assertCurrent(check?: () => boolean): void { if (check !== undefined && check() !== true) throw new Error(STALE); }
   private assertRevisions(): void {
@@ -309,4 +395,6 @@ class AtomicTransactions implements IAtomicHistoryCoordinator {
   }
 }
 
-export function createEditorTransactions(parts: Parts): IEditorTransactions { return new AtomicTransactions(parts).facade(); }
+export function createEditorTransactions(parts: Parts, renderer?: IEditorHostRenderer): IEditorTransactions {
+  return new AtomicTransactions(parts, renderer).facade();
+}

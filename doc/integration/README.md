@@ -17,6 +17,10 @@ peuvent varier selon l'outil : ils ne constituent pas un mécanisme de coordinat
    effectivement implémentées, méthodes publiques, vérifications et limites restantes.
 5. [Raccordement réel et référence de travail](timeline-integration-status.md) —
    interfaces à consommer, parcours réutilisables et distinction avec les versions publiées.
+6. [Transactions HA8](timeline-ha8-api.md) et
+   [rendu hôte HA9](timeline-ha9-host-render-api.md) — historique partagé,
+   préparation compensable et aperçu visible avant les notifications. Lire leur
+   état de validation et la référence des archives avant de les installer.
 
 Les documents suffisent sans relire les discussions et sans suivre les références
 numérotées aux anciennes questions. Les cas concernés sont décrits intégralement.

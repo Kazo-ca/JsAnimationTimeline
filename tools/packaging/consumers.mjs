@@ -122,7 +122,25 @@ try {
     write(file, readFileSync(join(temp, 'transactions-consumer.ts'), 'utf8'));
     run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2020', file], temp);
   }
-  console.log('npm: three archives, license, ESM, CommonJS, CSS, playback, host transactions, inspection stage and TypeScript Bundler/NodeNext OK');
+  write('host-render-consumer.ts', [
+    "import { createEditor, type IEditor, type IEditorHostRenderer, type IHostRenderCandidate, type HostRenderCause } from '@kazo-ca/timeline-editor';",
+    "import { createHtmlInspectionStage } from '@kazo-ca/timeline-runtime';",
+    "const renderer: IEditorHostRenderer = { prepare(candidate: IHostRenderCandidate) {",
+    "  const cause: HostRenderCause = candidate.cause;",
+    "  void [candidate.document, candidate.htmlContexts, candidate.time, candidate.sample, cause];",
+    "  return { changed: false, apply() {}, rollback() {} };",
+    "} };",
+    "export function attach(container: HTMLElement, root: ParentNode): IEditor {",
+    "  return createEditor(container, { stage: createHtmlInspectionStage({ root }), hostRenderer: renderer });",
+    "}",
+  ].join('\n'));
+  run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2020', 'host-render-consumer.ts'], temp);
+  for (const extension of ['mts', 'cts']) {
+    const file = `host-render-consumer.${extension}`;
+    write(file, readFileSync(join(temp, 'host-render-consumer.ts'), 'utf8'));
+    run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2020', file], temp);
+  }
+  console.log('npm: three archives, license, ESM, CommonJS, CSS, playback, host transactions, host rendering, inspection stage and TypeScript Bundler/NodeNext OK');
 
   mkdirSync(join(temp, 'nuget-feed'));
   copyFileSync(nupkg, join(temp, 'nuget-feed', basename(nupkg)));

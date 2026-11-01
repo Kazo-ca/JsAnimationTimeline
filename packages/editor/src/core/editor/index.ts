@@ -18,3 +18,4 @@ export type {
   TransactionChangedEvent, TransactionDirection
 } from './transactionTypes';
 export type { PropertyTimelineOperation } from '../../model/propertyTimelines/types';
+export type { HostRenderCause, IEditorHostRenderer, IHostRenderCandidate } from './hostRendererTypes';

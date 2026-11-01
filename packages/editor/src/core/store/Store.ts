@@ -105,6 +105,7 @@ export class Store {
   load(doc: ITimelineDocument): void {
     this.accept(doc);
     this.stack?.prepareLifecycle();
+    if (this.atomicLoad !== undefined) { this.atomicLoad(doc); return; }
     this.pendingCommits = [];
     const previous = this.current;
     this.current = doc;
@@ -133,6 +134,14 @@ export class Store {
 
   /** @internal Silent candidate installation, compensated before any public publication on failure. */
   installAtomic(doc: ITimelineDocument): void { this.current = doc; }
+  private atomicLoad: ((document: ITimelineDocument) => void) | undefined;
+  /** @internal Opt-in host rendering owns the load's prepare/apply/publication boundary. */
+  attachAtomicLoad(load: (document: ITimelineDocument) => void): void { this.atomicLoad = load; }
+  /** @internal Publish only after the prepared renderer and history reset have succeeded. */
+  publishAtomicLoad(previous: ITimelineDocument): void {
+    this.pendingCommits = [];
+    this.bus.emit('document:loaded', { document: this.current, previous });
+  }
   /** @internal Publishes an already installed, fully rendered atomic document. */
   publishAtomic(previous: ITimelineDocument, change: IDocumentChange): void {
     if (previous === this.current) return;

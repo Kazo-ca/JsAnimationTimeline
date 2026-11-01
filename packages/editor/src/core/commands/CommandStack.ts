@@ -163,6 +163,7 @@ export class CommandStack {
   execute(command: ICommand): boolean {
     const refusal = this.mutationRefusalReason;
     if (refusal !== undefined) { this.bus.emit('command:refused', { command, reason: refusal }); return false; }
+    if (this.atomic?.routesCommands) return this.atomic.executeCommand!(command);
     const lifecycleGeneration = this.lifecycleGeneration;
     if (!this.bus.emitCancellable('command:before', { command, document: this.writer.document })) {
       this.bus.emit('command:refused', { command, reason: CANCELLED_REASON });
@@ -236,11 +237,16 @@ export class CommandStack {
   /** Vide l'historique, abandonne un regroupement en cours et émet `history:changed`. */
   clear(): void {
     this.assertMutable();
+    this.clearAtomic();
+    this.emitHistoryChanged();
+  }
+
+  /** @internal Reset only after the prepared load has applied successfully. */
+  clearAtomic(): void {
     this.generation++;
     this.undoEntries = [];
     this.redoEntries = [];
     this.group = undefined;
-    this.emitHistoryChanged();
   }
 
   /** Démarre un regroupement (émet `history:changed`) ; lève si un regroupement est déjà en cours. */
@@ -376,7 +382,10 @@ export class CommandStack {
     if (destroy && this.atomic?.allowFaultedDestroy()) return;
     this.assertMutable();
     if (this.group?.commands.some(hasHostEntry)) this.cancelGroup();
+    if (destroy) this.atomic?.prepareDestroy?.();
   }
+  /** @internal Initialization failure and normal teardown share renderer cleanup. */
+  releaseAtomicRenderer(): void { this.atomic?.prepareDestroy?.(); }
   private assertMutable(): void {
     const reason = this.atomic?.refusal();
     if (reason !== undefined) throw new Error(reason);

@@ -28,6 +28,9 @@ export interface IAtomicHistoryCoordinator {
   assertHealthy(): void;
   allowFaultedDestroy(): boolean;
   refusal(): string | undefined;
+  readonly routesCommands?: boolean;
+  executeCommand?(command: ICommand): boolean;
+  prepareDestroy?(): void;
   replay(entry: HistoryEntry, direction: 'undo' | 'redo' | 'cancel', commit: () => void, groupToken?: object): boolean;
   finishGroup(token: object, label: string, commit: () => void): void;
 }

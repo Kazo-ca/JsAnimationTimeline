@@ -128,7 +128,7 @@ function createParts(container: HTMLElement, options: EditorOptions): IEditorPar
     const stageFacade = createStageFacade(stageHost, assertActive);
     const services = new ServiceRegistry();
     const propertyFacade = createPropertyTimelines({ bus, store, commands, lifecycle, playbackFacade, registry, stageHost });
-    const transactionFacade = createEditorTransactions({ bus, store, commands, lifecycle, registry, stageHost });
+    const transactionFacade = createEditorTransactions({ bus, store, commands, lifecycle, registry, stageHost, playback }, options.hostRenderer);
     return {
       bus, store, commands, host, services, registry, playback, playbackFacade, stageHost, stageFacade, element, lifecycle, propertyFacade, transactionFacade
     };
@@ -160,8 +160,12 @@ function startPlugins(parts: IEditorParts): void {
   try {
     parts.host.start(ctx);
   } catch (error) {
-    releaseEditorParts(parts);
-    parts.lifecycle.finishDestroy();
+    try { releaseEditorParts(parts); }
+    catch (cleanupError) {
+      const detail = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
+      throw Object.assign(new Error(`Le démarrage de l’éditeur a échoué : ${detail(error)}. Le nettoyage a aussi échoué : ${detail(cleanupError)}.`),
+        { cause: error, cleanupError });
+    } finally { parts.lifecycle.finishDestroy(); }
     throw error;
   }
 }

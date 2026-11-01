@@ -1,7 +1,7 @@
 <!-- doc/integration/timeline-integration-status.md -->
 # Raccordement réel de HtmlAnimation à la Timeline
 
-Ce document accompagne le contrat HA-TL-001 r2 et les API HA1 à HA8. Il permet
+Ce document accompagne le contrat HA-TL-001 r2 et les API HA1 à HA9. Il permet
 au chantier HtmlAnimation d'avancer sans accès à la conversation Timeline.
 
 ## Référence de travail
@@ -24,6 +24,12 @@ HA8 ajoute l'historique atomique sur `v2/HA8-atomic-host-transactions`, qui incl
 HA7. Son contrat est `HA8-TRANSACTIONS/1` dans `timeline-ha8-api.md` ; son état de
 validation et ses archives sont décrits dans `doc/v2/todo/ha8-validation.md`.
 Les PR HA7 et HA8 restent distinctes et ne sont pas fusionnées automatiquement.
+HA9 ajoute le rendu hôte préparé sur `v2/HA9-designer-integration-bridge`, issue
+du commit HA8 `f6de3c592c8c90c35285332f704ef68dfcce0b41`. Son contrat est
+`HA9-HOST-RENDER/1` dans `timeline-ha9-host-render-api.md`. La référence exacte,
+les validations et les archives sont dans `doc/v2/todo/ha9-validation.md`.
+Ce checkpoint ne comprend pas la résolution sur candidat final ni la projection
+spatiale, qui restent suivies dans `doc/v2/todo/ha9-integration-bridge.md`.
 
 Ces changements ne désignent pas une nouvelle version publiée. Le numéro de
 version des archives locales ne suffit pas à identifier ce code. Utiliser le
@@ -47,6 +53,7 @@ packages actuellement disponibles sur npm/NuGet possèdent ces interfaces.
 | Points de dégradé qui se croisent | Tri stable au rendu par position évaluée ; identifiants et données conservés ; HA7. |
 | Structure, contexte, clés et effet HTML dans une annulation | `editor.transactions.execute`, même historique que HA2 ; HA8. |
 | Designer seul responsable du rendu HTML | `createHtmlInspectionStage` et son callback `preserveSource` ; HA8. |
+| Aperçu hôte déjà appliqué au premier observateur | `EditorOptions.hostRenderer.prepare(candidate)` ; HA9, échantillon et contextes candidats immuables, compensation avant notification. |
 
 Les signatures et limites détaillées sont dans les documents d'API voisins.
 L'ancienne méthode numérique `editor.setProperty()` conserve son contrat
@@ -72,6 +79,11 @@ de propriétés sont opaques et ne sont pas des identifiants de calques.
   en attente, même après une application partielle. Un simple couple redo/undo
   existant ne prouve pas cette garantie. Une faute de compensation exige une
   restauration hôte et une recréation de l'éditeur.
+- Avec HA9, le renderer préparé remplace le rendu effectué par un abonnement
+  tardif. Garder un writer unique et utiliser les valeurs de `candidate.sample`.
+  Les mutations tentées pendant les notifications sont refusées ; un nouvel
+  appel est possible dès leur fin. Les limites de `seek` et du cycle de vie
+  restent explicitement décrites dans le contrat HA9.
 - Un document éditable ne se reconstruit pas à partir du JSON préévalué. Les
   sorties HA5 annoncent une précision par image ; le CSS HA6 accepté est continu.
 - Le Designer présente les refus CSS et les alternatives disponibles. Il ne
@@ -89,6 +101,7 @@ de propriétés sont opaques et ne sont pas des identifiants de calques.
 | TL-C13, C15 et refus CSS | Démo `css-exports.html`, comparaison de CSSAnimation réelles avec le moteur aux images fractionnaires. |
 | TL-C18 | Tests d'évaluation/découpe des sources de courbe et parcours d'insertion dans un effet élastique. |
 | HA8-TRANSACTIONS/1 | Démo `atomic-transactions.html`, tests `Editor.hostTransaction*` et `e2e/validation/atomic-transactions.spec.ts`. |
+| HA9-HOST-RENDER/1 | Démo `host-rendering.html`, tests `Editor.hostRenderer*` et `e2e/validation/host-rendering.spec.ts`. |
 
 Les résultats détaillés de chaque lot sont dans `doc/v2/todo/ha*-validation.md`.
 HtmlAnimation doit maintenant exécuter ses propres tests d'adaptateur et de
