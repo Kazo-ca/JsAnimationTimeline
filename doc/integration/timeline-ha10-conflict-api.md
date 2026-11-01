@@ -4,6 +4,8 @@
 Contrat `HA10-FINAL-CANDIDATE-CONFLICTS/1`, **implémenté et vérifié localement**.
 Branche `v2/HA10-final-candidate-conflicts`, après HA9. Ne pas supposer cette
 interface disponible dans les archives HA9 ou les packages publiés.
+Référence fonctionnelle : `426ae9dc4f6f4ea60923dc5e797f86a7f4cdfbb5`,
+[PR #131](https://github.com/Kazo-ca/JsAnimationTimeline/pull/131), non fusionnée.
 
 ## Surface publique
 

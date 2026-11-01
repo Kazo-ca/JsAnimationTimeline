@@ -7,6 +7,10 @@ Branche `v2/HA10-final-candidate-conflicts`, base documentaire HA9
 `c340203e50ac84f5fb58e8f9e60dc83f3c2bdf56`.
 Contrat : `HA10-FINAL-CANDIDATE-CONFLICTS/1`, dans
 `doc/integration/timeline-ha10-conflict-api.md`.
+Référence fonctionnelle vérifiée : `426ae9dc4f6f4ea60923dc5e797f86a7f4cdfbb5`.
+[PR #131](https://github.com/Kazo-ca/JsAnimationTimeline/pull/131), ouverte vers
+`v2/base`, non fusionnée ; prérequis HA7/HA8/HA9 dans les PR #128/#129/#130.
+Les ajouts documentaires suivants ne changent pas les binaires vérifiés.
 
 ## Résultat
 

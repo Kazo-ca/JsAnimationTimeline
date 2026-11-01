@@ -35,6 +35,9 @@ spatiale, qui restent suivies dans `doc/v2/todo/ha9-integration-bridge.md`.
 HA10 traite le premier de ces écarts sur `v2/HA10-final-candidate-conflicts`.
 Son contrat est `HA10-FINAL-CANDIDATE-CONFLICTS/1` dans
 `timeline-ha10-conflict-api.md` ; son état reste à vérifier avant installation.
+Référence HA10 vérifiée : `426ae9dc4f6f4ea60923dc5e797f86a7f4cdfbb5`,
+[PR #131](https://github.com/Kazo-ca/JsAnimationTimeline/pull/131), non fusionnée.
+Archives et résultats : `doc/v2/todo/ha10-validation.md`.
 La projection spatiale commune reste un lot suivant distinct.
 
 Ces changements ne désignent pas une nouvelle version publiée. Le numéro de
