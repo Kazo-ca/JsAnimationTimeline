@@ -108,7 +108,9 @@ function diagnostic(
     layerIds.filter((id) => ordered.filter((item) => item.source.layerId === id).length === 1);
   return { code, id: `html-conflict:${canonicalHtmlData(identity)}`,
     signature: canonicalHtmlData({ destination, totalFrames, candidates: ordered.map(contributionData) }),
-    property: ordered[0]?.property ?? destination, layerIds, targets, fromFrame: 1, toFrame: totalFrames,
+    property: ordered[0]?.property ?? destination, layerIds,
+    contributions: ordered.map((item) => ({ layerId: item.source.layerId, property: item.property })),
+    targets, fromFrame: 1, toFrame: totalFrames,
     choices, blocking: true, message };
 }
 

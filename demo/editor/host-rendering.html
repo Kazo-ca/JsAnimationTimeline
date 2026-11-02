@@ -1,0 +1,25 @@
+<!-- demo/editor/host-rendering.html -->
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Un aperçu déjà à jour · Timeline</title></head>
+<body class="JsTimeLine html-properties-page host-rendering-page"><main>
+  <header><nav><a href="index.html">← Démonstrations</a> · <a href="atomic-transactions.html">Historique partagé</a></nav>
+    <p class="eyebrow">JsAnimationTimeline · Rendu hôte</p>
+    <h1>Un aperçu déjà à jour.</h1>
+    <p>Le dégradé suit chaque modification, annulation et rétablissement. Dès la première notification, l’aperçu et le projet montrent le même état.</p>
+  </header>
+  <section class="scene-grid" aria-label="Scène et état observé">
+    <article class="scene-card"><h2>Une seule source pour l’aperçu</h2><div id="html-scene"><div id="gradient-box" aria-label="Dégradé animé" style="background-image: linear-gradient(90deg, red 0%, blue 100%); opacity: 0.8;"></div></div><output id="angle-output">90°</output><p class="source-note">La page d’origine reste intacte : le rendu d’aperçu est restaurable.</p></article>
+    <article class="scene-card"><h2>Ce que voient les notifications</h2><p id="observation-output">Aucune modification enregistrée.</p><p id="history-output"></p><p class="source-note">Chaque événement est conservé avec le fond affiché, le contexte HTML et l’état de l’historique.</p></article>
+  </section>
+  <section class="tools-grid" aria-label="Commandes de démonstration">
+    <section><h2>Modifier le dégradé</h2><div class="actions"><button id="transaction-edit" type="button">Transaction : angle à 35°</button><button id="direct-edit" type="button">Timeline : angle à 55°</button><button id="future-edit" type="button">Ajouter 120° à l’image 50</button></div><p class="source-note">La transaction ajoute aussi une liaison d’opacité. La commande Timeline utilise directement une piste de propriété.</p></section>
+    <form id="seek-form"><h2>Naviguer sans modifier l’historique</h2><label for="frame-input">Image</label><input id="frame-input" type="number" min="1" max="100" value="1"><button type="submit">Afficher l’image</button><output id="frame-output" data-frame="1">Image 1 / 100</output></form>
+    <section><h2>Une erreur laisse le projet intact</h2><div class="actions"><button id="fail-prepare" type="button">Refuser la préparation du rendu</button><button id="fail-apply" type="button">Simuler une erreur après écriture</button></div><p class="source-note">Le fond, le projet et le journal du renderer sont restaurés. Le rétablissement reste disponible.</p></section>
+    <section><h2>Une notification ne relance pas l’édition</h2><label class="probe-label"><input id="reentrant-probe" type="checkbox"> Essayer une édition depuis la notification</label><output id="reentrant-output">Aucune tentative réentrante.</output><p class="source-note">Après le refus, le bouton « Timeline : angle à 55° » reste utilisable normalement.</p></section>
+  </section>
+  <section aria-label="Timeline"><div id="editor-host"></div></section>
+  <p id="status" role="status">Prêt. Le dégradé d’origine est orienté à 90°.</p>
+  <details><summary>États observés pendant les notifications</summary><pre id="events-json"></pre></details>
+  <details><summary>Projet et journal du renderer</summary><pre id="project-json"></pre></details>
+</main><script type="module" src="./src/hostRendering.ts"></script></body></html>

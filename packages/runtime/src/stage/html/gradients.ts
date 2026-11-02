@@ -99,7 +99,8 @@ export function composeHtmlGradient(definition: IHtmlGradientDefinition, changes
     if (reason !== undefined) return { status: 'unsupported', reason };
     gradient = applyChange(gradient, change);
   }
-  const stops = gradient.stops.filter((stop) => stop.present);
+  // Sort only the rendered copy; stable ties retain the definition's hard-stop order.
+  const stops = gradient.stops.filter((stop) => stop.present).sort((left, right) => left.position - right.position);
   if (stops.length < 2) return { status: 'unsupported', reason: 'Le dégradé exige au moins deux points présents à cette image.' };
   const colors = stops.map((stop) => `${htmlColorText(stop.color, stop.opacity)} ${htmlNumberText(stop.position)}%`).join(', ');
   const n = htmlNumberText;

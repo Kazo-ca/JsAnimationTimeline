@@ -71,7 +71,7 @@ type CommitObserver = (event: DocumentChangedEvent, groupToken?: object) => void
 /** Conteneur du document v2 courant. */
 export class Store {
   private readonly commitObservers = new Set<CommitObserver>();
-  private pendingCommits: { event: DocumentChangedEvent; groupToken?: object }[] = [];
+  private pendingCommits: { event: DocumentChangedEvent; groupToken?: object; atomic?: boolean }[] = [];
   private commitDepth = 0;
   private notifyingCommits = false;
   private current: ITimelineDocument;
@@ -104,6 +104,8 @@ export class Store {
    */
   load(doc: ITimelineDocument): void {
     this.accept(doc);
+    this.stack?.prepareLifecycle();
+    if (this.atomicLoad !== undefined) { this.atomicLoad(doc); return; }
     this.pendingCommits = [];
     const previous = this.current;
     this.current = doc;
@@ -128,6 +130,25 @@ export class Store {
   observeCommits(observer: CommitObserver): () => void {
     this.commitObservers.add(observer);
     return () => { this.commitObservers.delete(observer); };
+  }
+
+  /** @internal Silent candidate installation, compensated before any public publication on failure. */
+  installAtomic(doc: ITimelineDocument): void { this.current = doc; }
+  private atomicLoad: ((document: ITimelineDocument) => void) | undefined;
+  /** @internal Opt-in host rendering owns the load's prepare/apply/publication boundary. */
+  attachAtomicLoad(load: (document: ITimelineDocument) => void): void { this.atomicLoad = load; }
+  /** @internal Publish only after the prepared renderer and history reset have succeeded. */
+  publishAtomicLoad(previous: ITimelineDocument): void {
+    this.pendingCommits = [];
+    this.bus.emit('document:loaded', { document: this.current, previous });
+  }
+  /** @internal Publishes an already installed, fully rendered atomic document. */
+  publishAtomic(previous: ITimelineDocument, change: IDocumentChange): void {
+    if (previous === this.current) return;
+    const payload: DocumentChangedEvent = { document: this.current, previous, cause: change.cause, label: change.label };
+    this.pendingCommits.push({ event: payload, groupToken: change.groupToken, atomic: true });
+    this.bus.emit('document:changed', payload);
+    this.flushCommits();
   }
 
   /** Valide `doc` (lève `StoreError`), puis signale ou refuse ses pistes inconnues. */
@@ -177,7 +198,10 @@ export class Store {
     try {
       while (this.pendingCommits.length > 0) {
         const next = this.pendingCommits.shift()!;
-        for (const observer of this.commitObservers) observer(next.event, next.groupToken);
+        for (const observer of this.commitObservers) {
+          if (next.atomic) this.bus.observeCommitted(() => observer(next.event, next.groupToken), 'document:changed');
+          else observer(next.event, next.groupToken);
+        }
       }
     } finally { this.notifyingCommits = false; }
   }

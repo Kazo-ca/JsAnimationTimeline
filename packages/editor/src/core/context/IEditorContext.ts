@@ -30,6 +30,7 @@
 
 import type { ITimelineDocument, PropertyRegistry } from '@kazo-ca/timeline-runtime';
 import type { ICommand } from '../commands/ICommand';
+import type { IEditorTransactions } from '../editor/transactionTypes';
 import type { CancellableHandler, EventHandler, EventName } from '../events/EventBus';
 import type { TimelineEventMap } from '../events/TimelineEventMap';
 import type { IEditorPlayback } from '../playback/types';
@@ -60,6 +61,7 @@ export type CoreEventName =
   | 'document:loaded'
   | 'document:changed'
   | 'property:changed'
+  | 'transaction:changed'
   | 'command:before'
   | 'command:refused'
   | 'history:changed'
@@ -197,6 +199,7 @@ export interface IEditorContext {
   readonly commands: IEditorCommands;
   /** Independent property editing; shared with the public editor facade. */
   readonly propertyTimelines: IEditorPropertyTimelines;
+  readonly transactions: IEditorTransactions;
   /** Emplacements de rendu nommés ; `ROOT_SLOT` désigne `container`. */
   readonly slots: SlotRegistry;
   /** Élément racine de l'éditeur (classe `JsTimeLine`), enfant du conteneur hôte. */

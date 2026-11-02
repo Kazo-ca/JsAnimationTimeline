@@ -51,6 +51,30 @@ test.describe('portable frame-sampled playback exports', () => {
     expect((await snapshot(page)).editable).toBe(before.editable);
   });
 
+  test('preserves crossing gradient stops in JSON and an actually imported standalone module', async ({ page }) => {
+    const before = await snapshot(page);
+    const gradients = new Map<number, string>();
+    for (const frame of [49, 50, 51, 70, 51, 50, 49]) {
+      await seek(page, frame);
+      await compareScenes(page);
+      const current = await snapshot(page);
+      const blue = current.source.gradient.indexOf('rgb(0, 0, 255)');
+      const green = current.source.gradient.indexOf('rgba(0, 255, 0,');
+      expect(blue).toBeGreaterThan(-1);
+      expect(green).toBeGreaterThan(-1);
+      expect(blue < green).toBe(frame > 50);
+      if (gradients.has(frame)) expect(current.source.gradient).toBe(gradients.get(frame));
+      gradients.set(frame, current.source.gradient);
+      expect(current.editable).toBe(before.editable);
+      expect(current.javascriptRequests).toEqual([]);
+    }
+    await page.getByRole('button', { name: 'Relire le JSON HTML', exact: true }).click();
+    await expect(page.locator('#export-status')).toContainText('JSON relu');
+    await seek(page, 51);
+    await compareScenes(page);
+    expect((await snapshot(page)).source.gradient).toBe(gradients.get(51));
+  });
+
   test('downloads actual data and a dependency-free module preserving hostile names as data', async ({ page }) => {
     const downloadJson = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Télécharger le JSON HTML', exact: true }).click();

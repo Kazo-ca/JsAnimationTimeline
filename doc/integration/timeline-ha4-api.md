@@ -175,6 +175,13 @@ des points stables `{id,color,opacity,position,present}`. La couleur du point es
 un RGB opaque (`a:1`) ; sa piste d'opacité est l'unique propriétaire de son alpha.
 Sa position est un pourcentage, également pour les dégradés coniques.
 
+Depuis HA7, les points présents sont ordonnés au rendu par position évaluée
+croissante. À position égale, l'ordre structurel initial est conservé, pour
+préserver les ruptures de couleur. Ce tri ne modifie ni le tableau du contexte,
+ni les identifiants, ni les pistes de couleur/opacité/présence. Le résultat est
+identique en navigation directe, en lecture et en retour arrière. Cette évolution
+n'est pas incluse dans les archives HA6 initiales ; voir `timeline-ha7-api.md`.
+
 Chaque composante possède sa piste indépendante. La présence booléenne permet
 d'ajouter ou retirer un point à une image sans renuméroter les autres. Le Designer
 enregistre sa définition structurelle dans le contexte, puis écrit les clés via
@@ -182,6 +189,12 @@ les transactions Timeline. La structure initiale est fournie par l'hôte ; HA4
 n'est pas un parseur universel de textes CSS de dégradés. Pour les groupes, le
 fond source est également comparé, afin qu'une même définition fournie ne masque
 pas des fonds DOM divergents.
+
+L'ajout structurel et ses clés ne forment pas une transaction atomique publique
+dans HA4–HA7 : `setAnimationContext()` est distinct de `beginTransaction()`.
+Un point préenregistré invisible peut apparaître par une clé, mais son annulation
+ne retire pas sa définition du contexte. La proposition technique, non livrée,
+est décrite dans `timeline-host-transactions-proposal.md`.
 
 `prepareHtmlResolution`, `resolveHtmlBinding`, `readHtmlPropertyBase`,
 `captureHtmlTransformBase` et `composeHtmlDeclarations` sont exportés pour les

@@ -11,6 +11,12 @@ export {
   defaultPlugins
 } from './core/editor';
 export type { EditorOptions, IEditor, SetPropertyOptions } from './core/editor';
+export type { HostRenderCause, IEditorHostRenderer, IHostRenderCandidate } from './core/editor';
+export type {
+  IEditorTransactions, IEditorTransactionRequest, IHtmlConflictTransactionRequest, EditorTransactionResult,
+  ITransactionFault, IHostHistoryEffect, IPreparedHostChange, IHtmlContextChange,
+  TransactionChangedEvent, TransactionDirection, PropertyTimelineOperation
+} from './core/editor';
 export type {
   IEditorPropertyTimelines, IPropertyTimelineTransaction, PropertyChangedEvent,
   PropertyTimelineEditOptions, PropertyTimelineMutationResult

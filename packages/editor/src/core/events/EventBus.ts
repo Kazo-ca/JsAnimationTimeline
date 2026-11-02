@@ -80,6 +80,33 @@ export class EventBus<M extends object = TimelineEventMap> {
   private readonly handlers = new HandlerRegistry<EventHandler<never>>();
   private readonly cancellableHandlers = new HandlerRegistry<CancellableHandler<never>>();
   private readonly reportError: (error: unknown, eventName: string) => void;
+  private batch: (() => void)[] | undefined;
+
+  /** @internal Defers observations until the complete atomic state is installed. */
+  beginBatch(): { commit(): void; discard(): void } {
+    if (this.batch !== undefined) throw new Error('Une publication atomique est déjà en cours.');
+    const pending: (() => void)[] = [];
+    this.batch = pending;
+    return {
+      commit: () => {
+        if (this.batch !== pending) return;
+        this.batch = undefined;
+        pending.forEach((notify) => notify());
+      },
+      discard: () => { if (this.batch === pending) this.batch = undefined; }
+    };
+  }
+
+  /** @internal Queues the complete guarded publication, preserving batch commit/discard semantics. */
+  enqueuePublication(publish: () => void): void {
+    if (this.batch !== undefined) this.batch.push(publish);
+    else publish();
+  }
+
+  /** @internal Protects post-commit observers with the same error policy as ordinary event listeners. */
+  observeCommitted(action: () => void, eventName: string): void {
+    try { action(); } catch (error) { this.report(error, eventName); }
+  }
 
   constructor(options: EventBusOptions = {}) {
     this.reportError = options.onError ?? reportToConsole;
@@ -109,6 +136,7 @@ export class EventBus<M extends object = TimelineEventMap> {
 
   /** Émet `name` vers les gestionnaires ordinaires. */
   emit<K extends EventName<M>>(name: K, payload: M[K]): void {
+    if (this.batch !== undefined) { this.batch.push(() => this.emit(name, payload)); return; }
     this.dispatch(this.handlers, name, (handler) => (handler as EventHandler<M[K]>)(payload));
   }
 

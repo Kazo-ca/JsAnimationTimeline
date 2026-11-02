@@ -28,8 +28,9 @@ export interface CommandBeforeEvent {
 
 /** Charge utile de `command:refused`. */
 export interface CommandRefusedEvent {
+  /** Original ordinary command; host/group entries use a stable inert descriptor with their label. */
   readonly command: ICommand;
-  /** `CANCELLED_REASON` pour un veto, sinon `CommandRefusedError.reason`. */
+  /** CANCELLED_REASON for a veto, exact CommandRefusedError.reason, or another failure's message. */
   readonly reason: string;
 }
 

@@ -27,6 +27,7 @@ import { InlineStyleKeeper, writeFrameStyles } from './inlineStyles';
 import { assertHtmlLayerSupported, needsVisibility } from './keyframes';
 import { WaapiAnimations } from './waapi';
 import { HtmlAnimationRenderer } from './animationRenderer';
+import { registerHtmlStageAtomicAccess } from './atomicAccess';
 import type { IHtmlAnimationContext, IHtmlResolutionDiagnostic } from './animationTypes';
 import type { IHtmlInspectPropertyOptions, IHtmlPropertyInspection } from './propertyInspection';
 import type { ITransportTime, ITransportSyncState } from '../../transport/types';
@@ -51,6 +52,17 @@ export interface IHtmlStageOptions {
   readonly excludeElement?: (element: Element) => boolean;
   /** Serializable HTML bindings, gradients and explicit conflict decisions. */
   readonly animationContext?: IHtmlAnimationContext;
+}
+
+/** Inspection for a host that owns its preview renderer. No styles or Web Animations are written. */
+export interface IHtmlInspectionStageOptions extends Omit<IHtmlStageOptions, 'mode'> {
+  /** Temporarily expose original source styles for each synchronous metadata read, then restore host preview. */
+  readonly preserveSource?: <T>(read: () => T) => T;
+}
+
+/** Creates a full HTML metadata/context participant without taking ownership of the host's rendering. */
+export function createHtmlInspectionStage(options: IHtmlInspectionStageOptions = {}): IHtmlStage {
+  return createHtmlStageCore({ ...options, mode: 'frame' }, options.preserveSource ?? ((read) => read()));
 }
 
 /** The HTML stage. */
@@ -214,6 +226,10 @@ function createFrameStage(core: IHtmlStageCore, base: IStage<Element>): IStage<E
 
 /** Creates an HTML stage; see `IHtmlStageOptions`. */
 export function createHtmlStage(options: IHtmlStageOptions = {}): IHtmlStage {
+  return createHtmlStageCore(options);
+}
+
+function createHtmlStageCore(options: IHtmlStageOptions, inspectOnly?: <T>(read: () => T) => T): IHtmlStage {
   const mode = options.mode ?? 'waapi';
   assertMode(mode);
   const core: IHtmlStageCore = {
@@ -231,7 +247,7 @@ export function createHtmlStage(options: IHtmlStageOptions = {}): IHtmlStage {
     }
   };
   const legacy = mode === 'waapi' ? createWaapiStage(core, base) : createFrameStage(core, base);
-  const modern = new HtmlAnimationRenderer(core.elements, () => registryOf(core), options.animationContext);
+  const modern = new HtmlAnimationRenderer(core.elements, () => registryOf(core), options.animationContext, inspectOnly);
   let exact = false;
   let last: { doc: ITimelineDocument; layers: readonly IStageLayer<Element>[] } | undefined;
   let lastTime: ITransportTime = { frame: 1, integerFrame: 1, timeMs: 0 };
@@ -239,8 +255,10 @@ export function createHtmlStage(options: IHtmlStageOptions = {}): IHtmlStage {
   let lastStates: readonly IStageLayerState<Element>[] = [];
   let sourceReads = 0;
   let sourceEdits = 0;
+  let revision = 0;
+  let mutationGuard = (): void => {};
   const notify = (targets?: readonly LayerTarget[]): void => Array.from(core.listeners).forEach((listener) => listener(targets));
-  const useExact = (layers: readonly IStageLayer<Element>[]): boolean => options.animationContext !== undefined ||
+  const useExact = (layers: readonly IStageLayer<Element>[]): boolean => inspectOnly !== undefined || options.animationContext !== undefined ||
     Object.keys(modern.animationContext.bindings ?? {}).length > 0 || layers.some(({ layer, target }) =>
       Object.keys(layer.propertyTimelines ?? {}).length > 0 || core.elements.resolveElements(target).length > 1);
   const targets = createTargets(core);
@@ -258,7 +276,7 @@ export function createHtmlStage(options: IHtmlStageOptions = {}): IHtmlStage {
       }
     }
   };
-  return {
+  const stage: IHtmlStage = {
     ...base,
     mode,
     get effectiveMode() { return exact ? 'frame' : mode; },
@@ -271,19 +289,27 @@ export function createHtmlStage(options: IHtmlStageOptions = {}): IHtmlStage {
     resolveElements: (target) => core.elements.resolveElements(target),
     inspectProperty: (target, property, inspectOptions) => inspectSource(() => modern.inspect(target, property, inspectOptions)),
     setAnimationContext(context) {
+      mutationGuard();
       modern.setContext(context);
+      revision++;
       if (last !== undefined) notify(last.layers.map((layer) => layer.target));
     },
     refresh() {
+      mutationGuard();
+      revision++;
       inspectSource(() => modern.refresh());
       notify(last?.layers.map((layer) => layer.target));
     },
     withSourceStyles(action) {
+      mutationGuard();
+      revision++;
       sourceEdits++;
       try { return inspectSource(() => modern.withSourceStyles(action)); }
       finally { if (--sourceEdits === 0) notify(last?.layers.map((layer) => layer.target)); }
     },
     bind(ref, element) {
+      mutationGuard();
+      revision++;
       core.elements.bind(ref, element);
       notify([{ ref, stage: HTML_STAGE_ID }]);
     },
@@ -318,4 +344,15 @@ export function createHtmlStage(options: IHtmlStageOptions = {}): IHtmlStage {
     release(layerId, element) { if (exact) modern.release(layerId); else legacy.release?.(layerId, element); },
     detach() { modern.detach(); legacy.detach?.(); last = undefined; lastStates = []; exact = false; }
   };
+  registerHtmlStageAtomicAccess(stage, {
+    get revision() { return revision; },
+    get context() { return modern.animationContext; },
+    installContext(context) { modern.installContext(context); revision++; },
+    inspect: (doc, context, layerId, property, kind) => inspectSource(() => modern.inspectCandidate(doc, context, layerId, property, kind)),
+    validate: (doc, context) => inspectSource(() => modern.validateCandidate(doc, context)),
+    source: (action) => inspectOnly === undefined ? inspectSource(() => modern.withSourceStyles(action)) : action(),
+    readSource: (read) => inspectOnly === undefined ? inspectSource(() => modern.withSourceStyles(read)) : inspectOnly(read),
+    guard: (check) => { mutationGuard = check; }
+  });
+  return stage;
 }

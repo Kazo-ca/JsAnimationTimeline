@@ -12,3 +12,10 @@ export type {
   IEditorPropertyTimelines, IPropertyTimelineTransaction, PropertyChangedEvent,
   PropertyTimelineEditOptions, PropertyTimelineMutationResult
 } from './propertyTimelineTypes';
+export type {
+  IEditorTransactions, IEditorTransactionRequest, IHtmlConflictTransactionRequest, EditorTransactionResult,
+  ITransactionFault, IHostHistoryEffect, IPreparedHostChange, IHtmlContextChange,
+  TransactionChangedEvent, TransactionDirection
+} from './transactionTypes';
+export type { PropertyTimelineOperation } from '../../model/propertyTimelines/types';
+export type { HostRenderCause, IEditorHostRenderer, IHostRenderCandidate } from './hostRendererTypes';

@@ -62,6 +62,7 @@ try {
     "assert.equal(typeof exportHtmlCss, 'function');",
     "assert.equal(typeof require('@kazo-ca/timeline-export-css').exportHtmlCss, 'function');",
     "const commonjs = require('@kazo-ca/timeline-runtime');",
+    "assert.equal(typeof commonjs.createHtmlInspectionStage, 'function');",
     "for (const name of ['compilePlayback', 'parsePlayback', 'samplePlayback', 'createPlaybackPlayer', 'compileHtmlPlayback', 'parseHtmlPlayback', 'createHtmlPlaybackPlayer', 'exportHtmlJavascript']) assert.equal(typeof commonjs[name], 'function');",
     "for (const fn of [createPlaybackPlayer, compileHtmlPlayback, parseHtmlPlayback, createHtmlPlaybackPlayer, exportHtmlJavascript]) assert.equal(typeof fn, 'function');",
     "const document = { ...createEmptyDocument(), settings: { fps: 24, totalFrames: 20 }, layers: [{ id: 'object', name: 'Object', type: 'layer', spans: [], propertyTimelines: { opacity: { initialValue: { kind: 'number', value: 1 }, keys: [{ frame: 10, value: { kind: 'number', value: 0.5 } }] } } }] };",
@@ -98,7 +99,52 @@ try {
     write(file, readFileSync(join(temp, 'playback-consumer.ts'), 'utf8'));
     run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2020', file], temp);
   }
-  console.log('npm: three archives, license, ESM, CommonJS, CSS, playback APIs and TypeScript Bundler/NodeNext OK');
+  write('transactions-consumer.ts', [
+    "import type { IEditor, IEditorTransactions, IEditorTransactionRequest, IHtmlConflictTransactionRequest, EditorTransactionResult, IHostHistoryEffect, PropertyTimelineOperation, TransactionChangedEvent } from '@kazo-ca/timeline-editor';",
+    "import { createHtmlInspectionStage, type IHtmlAnimationContext, type IHtmlInspectionStageOptions, type IHtmlStage } from '@kazo-ca/timeline-runtime';",
+    "export function inspection(root: ParentNode, context: IHtmlAnimationContext): IHtmlStage {",
+    "  const options: IHtmlInspectionStageOptions = { root, animationContext: context, preserveSource: read => read() };",
+    "  return createHtmlInspectionStage(options);",
+    "}",
+    "const property: PropertyTimelineOperation = { kind: 'set', layerId: 'object', property: 'present', frame: 50, initialValue: { kind: 'boolean', value: false }, value: { kind: 'boolean', value: true } };",
+    "const effect: IHostHistoryEffect = { prepare: direction => ({ changed: direction !== 'execute', apply() {}, rollback() {} }) };",
+    "export function apply(editor: IEditor, context: IHtmlAnimationContext): EditorTransactionResult {",
+    "  const transactions: IEditorTransactions = editor.transactions;",
+    "  const request: IEditorTransactionRequest = { label: 'Add point', properties: [property], htmlContext: { stageId: 'html', context }, effect, isCurrent: () => true };",
+    "  editor.on('transaction:changed', (event: TransactionChangedEvent) => { void [event.phase, event.cause, event.revision]; });",
+    "  void transactions.fault;",
+    "  return transactions.execute(request);",
+    "}",
+    "export function resolve(editor: IEditor, confirmation: IHtmlConflictTransactionRequest['confirmation']): EditorTransactionResult {",
+    "  const request: IHtmlConflictTransactionRequest = { label: 'Confirm opacity winner and key', stageId: 'html', confirmation, winnerLayerId: 'object', properties: [{ kind: 'set', layerId: 'object', property: 'opacity', frame: 20, value: { kind: 'number', value: 0.5 } }], isCurrent: () => true };",
+    "  return editor.transactions.resolveHtmlConflict(request);",
+    "}",
+  ].join('\n'));
+  run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2020', 'transactions-consumer.ts'], temp);
+  for (const extension of ['mts', 'cts']) {
+    const file = `transactions-consumer.${extension}`;
+    write(file, readFileSync(join(temp, 'transactions-consumer.ts'), 'utf8'));
+    run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2020', file], temp);
+  }
+  write('host-render-consumer.ts', [
+    "import { createEditor, type IEditor, type IEditorHostRenderer, type IHostRenderCandidate, type HostRenderCause } from '@kazo-ca/timeline-editor';",
+    "import { createHtmlInspectionStage } from '@kazo-ca/timeline-runtime';",
+    "const renderer: IEditorHostRenderer = { prepare(candidate: IHostRenderCandidate) {",
+    "  const cause: HostRenderCause = candidate.cause;",
+    "  void [candidate.document, candidate.htmlContexts, candidate.time, candidate.sample, cause];",
+    "  return { changed: false, apply() {}, rollback() {} };",
+    "} };",
+    "export function attach(container: HTMLElement, root: ParentNode): IEditor {",
+    "  return createEditor(container, { stage: createHtmlInspectionStage({ root }), hostRenderer: renderer });",
+    "}",
+  ].join('\n'));
+  run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2020', 'host-render-consumer.ts'], temp);
+  for (const extension of ['mts', 'cts']) {
+    const file = `host-render-consumer.${extension}`;
+    write(file, readFileSync(join(temp, 'host-render-consumer.ts'), 'utf8'));
+    run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2020', file], temp);
+  }
+  console.log('npm: three archives, license, ESM, CommonJS, CSS, playback, host transactions, host rendering, inspection stage and TypeScript Bundler/NodeNext OK');
 
   mkdirSync(join(temp, 'nuget-feed'));
   copyFileSync(nupkg, join(temp, 'nuget-feed', basename(nupkg)));

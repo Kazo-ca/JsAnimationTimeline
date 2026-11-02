@@ -1,0 +1,22 @@
+<!-- demo/editor/history-refusals.html -->
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Comprendre un refus d’historique · Timeline</title></head>
+<body class="JsTimeLine html-properties-page history-refusals-page"><main>
+  <header><nav aria-label="Démonstrations"><a href="index.html">← Démonstrations</a> · <a href="host-rendering.html">Aperçu et notifications</a></nav>
+    <p class="eyebrow">JsAnimationTimeline · Historique et permissions</p><h1>Un refus expliqué, un état préservé.</h1>
+    <p>Une permission peut changer après une modification. Lorsqu’une annulation ou un rétablissement est refusé, son motif reste visible et le projet conserve son état.</p>
+  </header>
+  <section class="scene-grid" aria-label="Aperçu et historique">
+    <article class="scene-card"><h2>Opacité de l’aperçu</h2><div class="preview-surface"><div id="preview-box" style="opacity: 0.25;">Aperçu de l’objet</div></div><output id="opacity-output">25 %</output><p class="source-note">L’opacité d’origine est de 25 %. La commande la porte à 75 %.</p></article>
+    <article class="scene-card"><h2>État de l’historique</h2><p id="history-output"></p><output id="refusal-count">Aucun refus.</output><p class="source-note">Un refus n’ajoute aucune modification réussie et ne consomme pas l’étape à annuler ou à rétablir.</p></article>
+  </section>
+  <section class="tools-grid" aria-label="Commandes et permissions">
+    <section><h2>Modifier puis parcourir l’historique</h2><div class="actions"><button id="apply" type="button">Appliquer une opacité de 75 %</button><button id="undo" type="button" disabled>Annuler</button><button id="redo" type="button" disabled>Rétablir</button></div><p class="source-note">Commencez par appliquer la commande. Annulez-la, puis rétablissez-la.</p></section>
+    <section><h2>Simuler un changement de permission</h2><label class="permission-label"><input id="deny-undo" type="checkbox" disabled> Refuser l’annulation</label><label class="permission-label"><input id="deny-redo" type="checkbox" disabled> Refuser le rétablissement</label><p class="source-note">Après un refus, décochez la permission correspondante et réessayez la même action.</p></section>
+  </section>
+  <p id="status" role="status">Prêt à appliquer la commande.</p>
+  <details><summary>Refus reçus par l’application</summary><pre id="refusals-json"></pre></details>
+  <details><summary>Projet et journal du rendu</summary><pre id="project-json"></pre></details>
+  <div id="editor-host" hidden></div>
+</main><script type="module" src="./src/historyRefusals.ts"></script></body></html>

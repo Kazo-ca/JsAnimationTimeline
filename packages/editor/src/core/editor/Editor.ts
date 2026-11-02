@@ -33,6 +33,7 @@ import { PropertyOperationError } from '../../model/properties/propertyValue';
 import type { EditorLifecycle } from './EditorLifecycle';
 import type { IEditor, SetPropertyOptions } from './types';
 import type { IEditorPropertyTimelines } from './propertyTimelineTypes';
+import type { IEditorTransactions } from './transactionTypes';
 
 /** Pièces d'un éditeur, créées par `createEditor()`. */
 export interface IEditorParts {
@@ -55,6 +56,7 @@ export interface IEditorParts {
   readonly element: HTMLElement;
   readonly lifecycle: EditorLifecycle;
   readonly propertyFacade: IEditorPropertyTimelines;
+  readonly transactionFacade: IEditorTransactions;
 }
 
 /**
@@ -63,6 +65,11 @@ export interface IEditorParts {
  * `destroy` et à l'annulation d'un démarrage raté.
  */
 export function releaseEditorParts(parts: IEditorParts): void {
+  try { parts.commands.releaseAtomicRenderer(); }
+  finally { releaseCoreParts(parts); }
+}
+
+function releaseCoreParts(parts: IEditorParts): void {
   parts.commands.invalidatePending();
   parts.playback.destroy();
   parts.stageHost.destroy();
@@ -75,6 +82,11 @@ export function releaseEditorParts(parts: IEditorParts): void {
 /** Éditeur v2 retourné par `createEditor()`. */
 export class Editor implements IEditor {
   constructor(private readonly parts: IEditorParts) {}
+
+  get transactions(): IEditorTransactions {
+    this.assertActive('transactions');
+    return this.parts.transactionFacade;
+  }
 
   get propertyTimelines(): IEditorPropertyTimelines {
     this.assertActive('propertyTimelines');
@@ -195,6 +207,7 @@ export class Editor implements IEditor {
 
   destroy(reason?: string): void {
     const { lifecycle, bus, host } = this.parts;
+    if (!lifecycle.isDestroyed) this.parts.commands.prepareLifecycle(true);
     if (!lifecycle.beginDestroy()) return;
     const payload: EditorDestroyingEvent = reason === undefined ? {} : { reason };
     try {

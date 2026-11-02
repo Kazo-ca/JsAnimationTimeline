@@ -1,0 +1,25 @@
+<!-- demo/editor/atomic-transactions.html -->
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Un geste, une annulation · Timeline</title></head>
+<body class="JsTimeLine html-properties-page atomic-transactions-page"><main>
+  <header><nav><a href="index.html">← Démonstrations</a> · <a href="html-properties.html">Propriétés HTML</a></nav>
+    <p class="eyebrow">JsAnimationTimeline · Historique partagé</p>
+    <h1>Un geste, une annulation.</h1>
+    <p>Ajoutez un point au dégradé. Sa définition, ses clés et la modification de la page se valident et s’annulent ensemble.</p>
+  </header>
+  <section class="scene-grid" aria-label="Scène et état du projet">
+    <article class="scene-card"><h2>Le point apparaît à l’image 50</h2><div id="html-scene"><div id="gradient-box" aria-label="Dégradé animé"></div></div><p class="source-note">Au départ : deux points. Le troisième n’existe ni dans la définition ni dans les pistes.</p></article>
+    <article class="scene-card"><h2>La page suit le même historique</h2><p><span data-host-note>Cette note reçoit un identifiant lors de l’ajout.</span></p><p id="structure-output"></p><p id="journal-output" class="source-note"></p></article>
+  </section>
+  <section class="tools-grid" aria-label="Commandes de démonstration">
+    <section><h2>Ajouter le point central</h2><div class="actions"><button id="add-point" type="button">Ajouter un point à l’image 50</button><button id="preview-point" type="button">Prévisualiser l’ajout</button><button id="commit-preview" type="button" disabled>Valider le geste</button><button id="cancel-preview" type="button" disabled>Annuler le geste</button></div><p class="source-note">Le point conserve son identité après un rétablissement. Échap annule un geste en cours.</p></section>
+    <form id="seek-form"><h2>Observer avant et après</h2><label for="frame-input">Image</label><input id="frame-input" type="number" min="1" max="100" value="1"><button type="submit">Afficher l’image</button><output id="frame-output">Image 1 / 100</output></form>
+    <section><h2>Un refus laisse le projet intact</h2><div class="actions"><button id="invalid-edit" type="button">Essayer une modification refusée</button><button id="failed-effect" type="button">Simuler une erreur après écriture</button></div><p class="source-note">La seconde commande simule une erreur après la modification de l’attribut et du journal. La compensation doit les restaurer.</p></section>
+    <section><h2>Des notifications cohérentes</h2><label class="probe-label"><input id="reentrant-probe" type="checkbox"> Essayer une édition depuis la notification</label><p class="source-note">L’appel pendant la notification est refusé. Un nouvel appel une fois celle-ci terminée peut réussir.</p><button id="change-context" type="button" disabled>Orienter le dégradé après la notification</button><output id="reentrant-output">Aucune tentative réentrante.</output></section>
+  </section>
+  <section aria-label="Timeline"><div id="editor-host"></div></section>
+  <p id="status" role="status">Prêt. Aucune modification enregistrée.</p>
+  <details><summary>Projet et journal des changements HTML</summary><pre id="project-json"></pre></details>
+  <details><summary>États observés pendant les notifications</summary><pre id="events-json"></pre></details>
+</main><script type="module" src="./src/atomicTransactions.ts"></script></body></html>

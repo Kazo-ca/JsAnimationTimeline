@@ -51,6 +51,7 @@ import type { IEditorParts } from './Editor';
 import { EditorLifecycle } from './EditorLifecycle';
 import { createEmptyDocument } from './emptyDocument';
 import { createPropertyTimelines } from './createPropertyTimelines';
+import { createEditorTransactions } from './createEditorTransactions';
 import type { EditorOptions, IEditor } from './types';
 
 /** Classe de l'élément racine de l'éditeur (portée des styles LESS, même nom que le contrôle v1). */
@@ -127,8 +128,9 @@ function createParts(container: HTMLElement, options: EditorOptions): IEditorPar
     const stageFacade = createStageFacade(stageHost, assertActive);
     const services = new ServiceRegistry();
     const propertyFacade = createPropertyTimelines({ bus, store, commands, lifecycle, playbackFacade, registry, stageHost });
+    const transactionFacade = createEditorTransactions({ bus, store, commands, lifecycle, registry, stageHost, playback }, options.hostRenderer);
     return {
-      bus, store, commands, host, services, registry, playback, playbackFacade, stageHost, stageFacade, element, lifecycle, propertyFacade
+      bus, store, commands, host, services, registry, playback, playbackFacade, stageHost, stageFacade, element, lifecycle, propertyFacade, transactionFacade
     };
   } catch (error) {
     // Rien ne doit rester : lecture arrêtée, scènes relâchées et détachées, élément retiré.
@@ -152,13 +154,18 @@ function startPlugins(parts: IEditorParts): void {
     stage: parts.stageFacade,
     registry: parts.registry,
     propertyTimelines: parts.propertyFacade,
+    transactions: parts.transactionFacade,
     assertActive: (operation) => parts.lifecycle.assertActive(operation)
   });
   try {
     parts.host.start(ctx);
   } catch (error) {
-    releaseEditorParts(parts);
-    parts.lifecycle.finishDestroy();
+    try { releaseEditorParts(parts); }
+    catch (cleanupError) {
+      const detail = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
+      throw Object.assign(new Error(`Le démarrage de l’éditeur a échoué : ${detail(error)}. Le nettoyage a aussi échoué : ${detail(cleanupError)}.`),
+        { cause: error, cleanupError });
+    } finally { parts.lifecycle.finishDestroy(); }
     throw error;
   }
 }

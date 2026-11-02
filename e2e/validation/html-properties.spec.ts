@@ -167,6 +167,80 @@ test.describe('HTML property integration', () => {
     expect(track((await snapshot(page)).timeline, 'gradient', 'leftColor')).toEqual(track(before.timeline, 'gradient', 'leftColor'));
   });
 
+  test('keeps gradient stop identities when positions cross, tie, cancel and undo', async ({ page }) => {
+    await seek(page, 20);
+    await page.getByRole('button', { name: 'Afficher le point central', exact: true }).click();
+    await selectPropertyFrame(page, 'gradient', 'rightPosition', 20);
+    const before = await snapshot(page);
+    const beforeGradient = await page.locator('#gradient-box').evaluate((element) => getComputedStyle(element).backgroundImage);
+    const position = page.locator('.jt-properties-panel [data-property="rightPosition"] input');
+    await expect(position).toHaveValue('100');
+    await position.fill('25');
+    await position.press('Escape');
+    await expect(position).toHaveValue('100');
+    expect((await snapshot(page)).timeline).toEqual(before.timeline);
+    await expect(page.locator('#gradient-box')).toHaveCSS('background-image', beforeGradient);
+
+    await position.fill('25');
+    await position.press('Enter');
+    const crossedPattern = /rgb\(0, 0, 255\) 25%, rgba\(0, 255, 0, 0\.5\) 50%\)$/;
+    await expect(page.locator('#gradient-box')).toHaveCSS('background-image', crossedPattern);
+    const crossed = await snapshot(page);
+    expect(track(crossed.timeline, 'gradient', 'rightPosition')?.keys).toEqual([
+      { frame: 1, value: { kind: 'number', value: 100 } }, { frame: 20, value: { kind: 'number', value: 25 } }
+    ]);
+    for (const property of ['gradientAngle', 'leftColor', 'leftPresent', 'middlePresent', 'middleOpacity']) {
+      expect(track(crossed.timeline, 'gradient', property)).toEqual(track(before.timeline, 'gradient', property));
+    }
+    expect(crossed.html).toEqual(before.html);
+    expect(crossed.html.gradients?.gradient?.[0].stops.map((stop) => stop.id)).toEqual(['left', 'middle', 'right']);
+    await undo(page);
+    expect((await snapshot(page)).timeline).toEqual(before.timeline);
+    await expect(page.locator('#gradient-box')).toHaveCSS('background-image', beforeGradient);
+    await redo(page);
+    expect((await snapshot(page)).timeline).toEqual(crossed.timeline);
+    await expect(page.locator('#gradient-box')).toHaveCSS('background-image', crossedPattern);
+
+    await position.fill('50');
+    await position.press('Enter');
+    await expect(page.locator('#gradient-box')).toHaveCSS('background-image', /rgba\(0, 255, 0, 0\.5\) 50%, rgb\(0, 0, 255\) 50%\)$/);
+    expect((await snapshot(page)).html).toEqual(before.html);
+    await undo(page);
+    await expect(page.locator('#gradient-box')).toHaveCSS('background-image', crossedPattern);
+  });
+
+  test('renders a gradient MotionTween crossing deterministically when seeking in either direction', async ({ page }) => {
+    await page.getByRole('button', { name: 'Afficher le point central', exact: true }).click();
+    await selectPropertyFrame(page, 'gradient', 'rightPosition', 100);
+    const position = page.locator('.jt-properties-panel [data-property="rightPosition"] input');
+    await position.fill('25');
+    await position.press('Enter');
+    await selectPropertyFrame(page, 'gradient', 'rightPosition', 1);
+    await selectPropertyFrame(page, 'gradient', 'rightPosition', 100, true);
+    await page.getByRole('button', { name: 'Créer une interpolation de mouvement', exact: true }).click();
+    const animated = await snapshot(page);
+    expect(track(animated.timeline, 'gradient', 'rightPosition')?.transitions).toHaveLength(1);
+    const backgrounds = new Map<number, string>();
+    for (const frame of [66, 67, 68, 100, 68, 67, 66]) {
+      await seek(page, frame);
+      const background = await page.locator('#gradient-box').evaluate((element) => getComputedStyle(element).backgroundImage);
+      const blue = background.indexOf('rgb(0, 0, 255)');
+      const green = background.indexOf('rgba(0, 255, 0, 0.5)');
+      expect(blue).toBeGreaterThan(-1);
+      expect(green).toBeGreaterThan(-1);
+      expect(blue < green).toBe(frame > 67);
+      if (backgrounds.has(frame)) expect(background).toBe(backgrounds.get(frame));
+      backgrounds.set(frame, background);
+    }
+    expect((await snapshot(page)).timeline).toEqual(animated.timeline);
+    expect((await snapshot(page)).html).toEqual(animated.html);
+    await undo(page);
+    expect(track((await snapshot(page)).timeline, 'gradient', 'rightPosition')?.transitions).toBeUndefined();
+    await expect(page.locator('#gradient-box')).toHaveCSS('background-image', /rgba\(0, 255, 0, 0\.5\) 50%, rgb\(0, 0, 255\) 100%\)$/);
+    await redo(page);
+    await expect(page.locator('#gradient-box')).toHaveCSS('background-image', backgrounds.get(66)!);
+  });
+
   test('cancels and persists explicit priority decisions independently from selection and temporal keys', async ({ page }) => {
     const initial = await snapshot(page);
     await expect(page.locator('#conflict-target')).toHaveCSS('opacity', '1');

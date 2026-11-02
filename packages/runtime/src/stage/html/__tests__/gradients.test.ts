@@ -64,3 +64,31 @@ it('rejects invalid alpha or too few present stops while retaining unrelated dec
   expect(removed.declarations['background-image']).toBeUndefined();
   expect(removed.diagnostics).toHaveLength(1);
 });
+
+it.each(['linear', 'radial', 'conic'] as const)('orders crossed %s stops by evaluated position without changing their channels or source', (type) => {
+  const definition: IHtmlGradientDefinition = { ...gradient, type };
+  const before = JSON.stringify(definition);
+  const target = document.createElement('div');
+  const result = composeHtmlDeclarations(target,
+    { rightPosition: n(-20), leftOpacity: n(.25), rightColor: { kind: 'color', r: 1, g: 1, b: 0, a: 1 } },
+    { rightPosition: bound('position', 'right'), leftOpacity: bound('opacity', 'left'), rightColor: bound('color', 'right') }, [definition]);
+  expect(result.diagnostics).toEqual([]);
+  expect(result.declarations['background-image']).toContain('rgba(255, 255, 0, 1) -20%, rgba(255, 0, 0, 0.25) 0%');
+  expect(result.declarations['background-image']).not.toContain('rgba(0, 255, 0,');
+  expect(JSON.stringify(definition)).toBe(before);
+  expect(readHtmlPropertyBase(target, bound('position', 'right'), [definition])).toEqual({ status: 'value', value: n(100) });
+});
+
+it('preserves structural order at equal positions after seeking across a crossing', () => {
+  const definition: IHtmlGradientDefinition = { ...gradient, stops: [gradient.stops[2], gradient.stops[0]] };
+  const before = JSON.stringify(definition);
+  const target = document.createElement('div');
+  const render = (left: number, right: number) => composeHtmlDeclarations(target,
+    { leftPosition: n(left), rightPosition: n(right) },
+    { leftPosition: bound('position', 'left'), rightPosition: bound('position', 'right') }, [definition]).declarations['background-image'];
+  expect(render(20, 80)).toBe('linear-gradient(90deg, rgba(255, 0, 0, 1) 20%, rgba(0, 0, 255, 1) 80%)');
+  expect(render(80, 20)).toBe('linear-gradient(90deg, rgba(0, 0, 255, 1) 20%, rgba(255, 0, 0, 1) 80%)');
+  expect(render(50, 50)).toBe('linear-gradient(90deg, rgba(0, 0, 255, 1) 50%, rgba(255, 0, 0, 1) 50%)');
+  expect(render(20, 80)).toBe('linear-gradient(90deg, rgba(255, 0, 0, 1) 20%, rgba(0, 0, 255, 1) 80%)');
+  expect(JSON.stringify(definition)).toBe(before);
+});

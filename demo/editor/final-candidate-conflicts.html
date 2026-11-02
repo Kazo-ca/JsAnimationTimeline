@@ -1,0 +1,29 @@
+<!-- demo/editor/final-candidate-conflicts.html -->
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Un choix, les bonnes clés · Timeline</title></head>
+<body class="JsTimeLine html-properties-page final-candidate-conflicts-page"><main>
+  <header><nav aria-label="Démonstrations"><a href="index.html">← Démonstrations</a> · <a href="host-rendering.html">Aperçu et notifications</a></nav>
+    <p class="eyebrow">JsAnimationTimeline · Résolution de conflit</p>
+    <h1>Un choix, les bonnes clés.</h1>
+    <p>Confirmez l’objet prioritaire et les clés annoncées en une seule modification. Une annulation retrouve le conflit d’origine.</p>
+    <nav aria-label="Scénarios"><a href="final-candidate-conflicts.html">Deux classes de même priorité</a> · <a href="final-candidate-conflicts.html?scenario=prefix">Avant la première clé d’un ID</a></nav>
+  </header>
+  <section class="scene-grid" aria-label="Aperçu et conflit">
+    <article class="scene-card"><h2>Un élément, plusieurs objets Timeline</h2><div id="html-scene"><div id="specific" class="first second button" style="opacity: 1;">Même élément HTML</div></div><output id="opacity-output">100 %</output><output id="frame-output">Image 1 / 100</output><p class="source-note">Sans décision, la propriété en conflit conserve son style d’origine.</p></article>
+    <article class="scene-card"><h2 id="scenario-title">Deux classes de même priorité</h2><p id="conflict-summary"></p><p id="decision-summary"></p><p id="history-output"></p></article>
+  </section>
+  <section class="tools-grid" aria-label="Choix et vérifications">
+    <section><h2>Choisir explicitement</h2><label for="winner">Objet prioritaire</label><select id="winner"><option value="first">.first · 30 %</option><option value="second">.second · 70 %</option></select>
+      <label class="check-label"><input id="add-key" type="checkbox" checked> Ajouter la clé annoncée</label><p id="announced-key"></p>
+      <button id="confirm" type="button">Confirmer le choix et la clé</button>
+    </section>
+    <section><h2>Retrouver chaque état</h2><div class="actions"><button id="undo-decision" type="button">Annuler la décision</button><button id="redo-decision" type="button">Rétablir la décision</button></div><div class="actions frame-actions"><button id="frame-1" type="button">Voir l’image 1</button><button id="frame-20" type="button">Voir l’image 20</button><button id="frame-50" type="button">Voir l’image 50</button></div><p class="source-note">La navigation ne crée aucune étape dans l’historique.</p></section>
+    <section><h2>Une confirmation peut expirer</h2><label class="check-label"><input id="expired" type="checkbox"> Simuler une confirmation expirée</label><button id="retry" type="button" disabled>Réessayer l’ancienne confirmation</button><p class="source-note">Une ancienne décision est refusée après modification. La simulation représente aussi un changement de cible ou de source détecté par l’application hôte.</p></section>
+    <section><h2>Un seul état pour les observateurs</h2><p id="observation-output">Aucune modification enregistrée.</p><p class="source-note">L’aperçu, les clés, la décision et l’historique sont enregistrés dès chaque notification.</p></section>
+  </section>
+  <section aria-label="Timeline"><div id="editor-host"></div></section>
+  <p id="status" role="status">Choisissez l’objet prioritaire avant de confirmer.</p>
+  <details><summary>Projet, diagnostic réel et décisions</summary><pre id="project-json"></pre></details>
+  <details><summary>États observés pendant les notifications</summary><pre id="events-json"></pre></details>
+</main><script type="module" src="./src/finalCandidateConflicts.ts"></script></body></html>

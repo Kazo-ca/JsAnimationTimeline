@@ -24,7 +24,7 @@ import type { EventBus } from '../events/EventBus';
 /** Objets déjà gelés en profondeur par `deepFreezeValue`. */
 const deeplyFrozen = new WeakSet<object>();
 
-function deepFreezeValue(value: unknown): void {
+export function deepFreezeValue(value: unknown): void {
   if (typeof value !== 'object' || value === null || deeplyFrozen.has(value)) return;
   Object.freeze(value);
   Object.values(value).forEach(deepFreezeValue);

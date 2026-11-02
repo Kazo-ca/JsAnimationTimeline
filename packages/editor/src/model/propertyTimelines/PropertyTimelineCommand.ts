@@ -31,9 +31,17 @@ export class PropertyTimelineCommand implements ICommand {
   }
 
   do(doc: ITimelineDocument): ITimelineDocument {
+    return this.doWithContext(doc, this.context);
+  }
+
+  /** @internal Mixed atomic groups evaluate against their paired candidate context. */
+  get atomicOperation(): PropertyTimelineOperation { return clonePropertyOperation(this.operation); }
+
+  /** @internal Preserves command snapshots while the coordinator supplies candidate capabilities. */
+  doWithContext(doc: ITimelineDocument, context: IPropertyEditContext): ITimelineDocument {
     try {
       this.assertCurrent();
-      const next = applyPropertyTimelineOperation(doc, this.operation, this.context);
+      const next = applyPropertyTimelineOperation(doc, this.operation, context);
       this.assertCurrent();
       this.snapshot = next === doc ? undefined : findLayer(doc, this.operation.layerId);
       this.initial = false;

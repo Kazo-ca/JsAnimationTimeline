@@ -53,6 +53,8 @@ export interface IHtmlResolutionDiagnostic {
   readonly signature: string;
   readonly property: string;
   readonly layerIds: readonly string[];
+  /** HA10: exact temporal channels participating in a resolvable conflict. */
+  readonly contributions?: readonly { readonly layerId: string; readonly property: string }[];
   readonly targets: readonly string[];
   readonly fromFrame: number;
   readonly toFrame: number;

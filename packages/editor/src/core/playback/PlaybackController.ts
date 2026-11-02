@@ -86,6 +86,12 @@ export class PlaybackController {
   private stage: IStageRenderer | null = null;
   /** Le temps a sauté ou l'état de lecture a changé depuis le dernier `sync` des scènes. */
   private syncPending = true;
+  private mutationGuard: (() => void) | undefined;
+  private hostFrame: ((time: ITransportTime, cause: 'seek' | 'playback', draw: () => void, publish: () => void) => void) | undefined;
+  private nextRenderCause: 'seek' | 'playback' = 'playback';
+  private mutationVersion = 0;
+  /** Atomic timing installation must not call the host clock after changing transport state. */
+  private reconciliationNow: number | undefined;
 
   constructor(options: IPlaybackControllerOptions) {
     this.bus = options.bus;
@@ -94,7 +100,11 @@ export class PlaybackController {
     this.sampler = new FrameSampler(options.registry);
     const { fps, totalFrames } = this.store.document.settings;
     this.transport = createTransport({
-      clock: this.clock,
+      clock: {
+        now: () => this.reconciliationNow ?? this.clock.now(),
+        requestFrame: (callback) => this.clock.requestFrame(callback),
+        cancelFrame: (handle) => this.clock.cancelFrame(handle)
+      },
       fps,
       totalFrames,
       onSync: () => {
@@ -131,6 +141,7 @@ export class PlaybackController {
   }
 
   set loop(value: boolean) {
+    this.beforeMutation();
     this.transport.loop = value;
   }
 
@@ -139,15 +150,18 @@ export class PlaybackController {
   }
 
   set speed(value: number) {
+    this.beforeMutation();
     this.transport.speed = value;
   }
 
   play(): void {
+    this.beforeMutation();
     this.transport.play();
     this.schedule();
   }
 
   pause(): void {
+    this.beforeMutation();
     this.transport.pause();
     this.schedule();
   }
@@ -163,6 +177,8 @@ export class PlaybackController {
   }
 
   seek(frame: number): void {
+    this.beforeMutation();
+    this.nextRenderCause = 'seek';
     this.move(() => this.transport.seek(frame));
     this.schedule();
   }
@@ -178,6 +194,24 @@ export class PlaybackController {
     this.syncPending = true;
     this.schedule();
   }
+
+  /** @internal Host preparation and commit notifications must not permit time mutations. */
+  attachHostRendering(guard: () => void,
+    render: (time: ITransportTime, cause: 'seek' | 'playback', draw: () => void, publish: () => void) => void): void {
+    this.mutationGuard = guard;
+    this.hostFrame = render;
+  }
+
+  /** @internal Detect a synchronous clock tick re-entering host preparation. */
+  get renderVersion(): number { return this.mutationVersion; }
+
+  /** @internal Reuse document reconciliation: changed timing preserves the integer playhead. */
+  timeForDocument(doc: ITimelineDocument): ITransportTime {
+    return doc.settings.fps === this.fps && doc.settings.totalFrames === this.totalFrames
+      ? this.transport.time : FrameSampler.timeAt(doc, Math.min(this.frame, doc.settings.totalFrames));
+  }
+
+  private beforeMutation(): void { this.mutationGuard?.(); this.mutationVersion++; }
 
   /** Échantillon synchrone à `frame`, ou à la position courante. */
   sample(frame?: number): IFrameSample {
@@ -211,23 +245,45 @@ export class PlaybackController {
   /** `tick` hors d'un déplacement de l'éditeur : il vient de la boucle de lecture, déjà dans une image. */
   private readonly onTick = (): void => {
     if (this.moving) return;
+    this.mutationVersion++;
     this.cancelPending();
     this.render();
   };
 
-  private onDocument(doc: ITimelineDocument): void {
+  private onDocument(doc: ITimelineDocument): void { this.reconcileDocument(doc); }
+
+  /** @internal Install accepted timing without invoking a fallible host callback after mutation. */
+  commitDocumentTiming(doc: ITimelineDocument, time: ITransportTime, assertCurrent: () => void): void {
+    const changed = doc.settings.fps !== this.fps || doc.settings.totalFrames !== this.totalFrames;
+    // A failed clock read leaves the transport untouched. Requests for another frame are deferred
+    // to document publication, where EventBus reports observer errors without undoing a commit.
+    const now = changed ? this.clock.now() : undefined;
+    // The clock is host code: it may synchronously advance playback while being read.
+    // Reject the now-stale candidate before touching transport settings or its anchor.
+    assertCurrent();
+    this.reconciliationNow = now;
+    try { this.reconcileTiming(doc, time.integerFrame); }
+    finally { this.reconciliationNow = undefined; }
+  }
+
+  /** Legacy reconciliation; atomic commits have already installed the document's timing. */
+  reconcileDocument(doc: ITimelineDocument): void {
+    this.reconcileTiming(doc);
+    this.schedule();
+  }
+
+  private reconcileTiming(doc: ITimelineDocument, candidateFrame?: number): void {
     // Contrat `IStage.sync` : aussi appelé à chaque changement de document.
     this.syncPending = true;
     const { fps, totalFrames } = doc.settings;
     const changed = fps !== this.transport.fps || totalFrames !== this.transport.totalFrames;
     if (changed && isValidTimeline(fps, totalFrames)) {
-      const frame = this.transport.frame;
+      const frame = candidateFrame ?? this.transport.frame;
       this.move(() => {
         this.transport.setTimeline({ fps, totalFrames });
         this.transport.seek(Math.min(frame, totalFrames));
       });
     }
-    this.schedule();
   }
 
   private move(action: () => void): void {
@@ -258,6 +314,17 @@ export class PlaybackController {
 
   private render(): void {
     const time = this.transport.time;
+    const hostFrame = this.hostFrame;
+    const cause = this.nextRenderCause;
+    this.nextRenderCause = 'playback';
+    if (hostFrame !== undefined) {
+      hostFrame(time, cause, () => this.renderStage(time), () => this.publishFrame(time));
+      return;
+    }
+    this.publishFrame(time, () => this.renderStage(time));
+  }
+
+  private publishFrame(time: ITransportTime, draw?: () => void): void {
     if (time.integerFrame !== this.lastPlayhead) {
       const previous = this.lastPlayhead;
       this.lastPlayhead = time.integerFrame;
@@ -265,7 +332,7 @@ export class PlaybackController {
       // Un gestionnaire a pu détruire l'éditeur.
       if (this.destroyed) return;
     }
-    this.renderStage(time);
+    draw?.();
     if (this.destroyed) return;
     const sample = this.sampler.sample(this.store.document, time);
     this.bus.emit('frame:render', { sample });
