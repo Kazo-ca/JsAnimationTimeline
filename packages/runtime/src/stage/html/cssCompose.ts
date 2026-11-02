@@ -116,8 +116,11 @@ export function composeHtmlDeclarations(
     if (composed.status === 'value' && !spatialEntries.some((entry) => invalid.has(entry)) && supportedSpatialDeclarations(element, composed.value)) {
       Object.assign(declarations, composed.value);
     } else {
-      delete declarations.transform;
-      spatialEntries.forEach(({ property }) => diagnostics.push({ property, reason: composed.status === 'unsupported' ? composed.reason : 'La projection spatiale est invalide dans ce navigateur.' }));
+      const reason = composed.status === 'unsupported' ? composed.reason : 'La projection spatiale est invalide dans ce navigateur.';
+      // A refused pivot only concerns transform-origin; a composed HA4 transform stays valid.
+      const dropped = drivesTransform && declarations.transform !== undefined ? transforms : [];
+      if (dropped.length > 0) delete declarations.transform;
+      [...dropped, ...spatialEntries].forEach(({ property }) => diagnostics.push({ property, reason }));
     }
   }
   const gradientGroups = new Map<string, IEntry[]>();

@@ -30,3 +30,26 @@ test.each<{ label: string; definitions: readonly IHtmlSpatialDefinition[] }>([
   expect(result.diagnostics.length).toBeGreaterThan(0);
   expect(result.declarations.transform).toBeUndefined();
 });
+
+describe('a spatial refusal beside a valid HA4 transform', () => {
+  const beside: Readonly<Record<string, IHtmlResolvedBinding>> = {
+    x: { valueKind: 'number', binding: { kind: 'transform', component: 'x' } },
+    pivot: { valueKind: 'number', binding: { kind: 'spatial', projectionId: 'absent', component: 'pivotX', unit: '%' } },
+    rotation: { valueKind: 'number', binding: { kind: 'spatial', projectionId: 'absent', component: 'rotation', unit: 'deg' } }
+  };
+
+  test('keeps the transform when only a pivot is refused', () => {
+    const { x, pivot } = beside;
+    const result = composeHtmlDeclarations(spatialElement(), { x: number(10), pivot: number(50) }, { x, pivot }, [], undefined, []);
+    expect(result.declarations.transform).toBeDefined();
+    expect(result.declarations['transform-origin']).toBeUndefined();
+    expect(new Set(result.diagnostics.map(({ property }) => property))).toEqual(new Set(['pivot']));
+  });
+
+  test('reports the transform when the refused projection also drives it', () => {
+    const { x, rotation } = beside;
+    const result = composeHtmlDeclarations(spatialElement(), { x: number(10), rotation: number(45) }, { x, rotation }, [], undefined, []);
+    expect(result.declarations.transform).toBeUndefined();
+    expect(new Set(result.diagnostics.map(({ property }) => property))).toEqual(new Set(['rotation', 'x']));
+  });
+});
