@@ -1,10 +1,8 @@
 <!-- doc/integration/timeline-ha11-spatial-api.md -->
 # HA11 — Projection spatiale partagée
 
-Contrat `HA11-SPATIAL-PROJECTION/1`. **En pause à la demande de Benoit, non livré.**
-Le checkpoint et les validations restantes sont dans
-`doc/v2/todo/PAUSE-2026-11-01.md` du dépôt Timeline. Aucun navigateur ni package
-HA11 n'a encore été validé ; ne pas reprendre automatiquement.
+Contrat `HA11-SPATIAL-PROJECTION/1`. Vérifié localement, voir
+`doc/v2/todo/ha11-validation.md` du dépôt Timeline.
 Ce document complète HA4/HA5/HA6/HA8/HA9 et ne modifie pas leurs garanties
 temporelles. Il ne faut pas déduire une disponibilité dans les versions publiées.
 
@@ -136,6 +134,6 @@ commune. Ils ne remplacent jamais une source par celle d'un autre membre.
 
 ## Livraison et vérification
 
-Référence de travail : branche `v2/HA11-shared-spatial-projection`. Les empreintes,
-commit fonctionnel, PR et preuves complètes seront ajoutés après vérification.
-Les archives HA9B restent la dernière livraison et ne contiennent pas HA11.
+Référence vérifiée : `2b920f1123458b2ddd80d5c726eb1b11047e1d82`, branche
+`v2/HA11-shared-spatial-projection`. Empreintes, preuves et limites :
+`doc/v2/todo/ha11-validation.md`. Les archives HA9B ne contiennent pas HA11.

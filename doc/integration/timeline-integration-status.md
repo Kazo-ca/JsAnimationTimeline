@@ -44,13 +44,13 @@ d'undo/redo avec le renderer hôte. Voir `timeline-ha9b-history-refusals-api.md`
 et `doc/v2/todo/ha9-history-refusals.md` pour son état ; il ne faut pas le déduire
 des archives HA9 ou HA10 déjà remises.
 Référence HA9B vérifiée : `6d19da1f75af53e902b86164ce4cfb8003cef465`,
-[PR #132](https://github.com/Kazo-ca/JsAnimationTimeline/pull/132), non fusionnée.
+[PR #132](https://github.com/Kazo-ca/JsAnimationTimeline/pull/132), fusionnée dans `v2/base`.
 Archives et résultats : `doc/v2/todo/ha9b-validation.md`.
 HA11 implémente la projection spatiale commune sur
 `v2/HA11-shared-spatial-projection`. Son contrat est
 `HA11-SPATIAL-PROJECTION/1` dans `timeline-ha11-spatial-api.md`.
-Ce lot est en pause explicite ; sa vérification est incomplète et ses archives
-ne sont pas livrées. Voir `doc/v2/todo/PAUSE-2026-11-01.md` dans Timeline.
+Référence vérifiée : `2b920f1123458b2ddd80d5c726eb1b11047e1d82`.
+Archives et résultats : `doc/v2/todo/ha11-validation.md`.
 Les deux tests consommateurs de refus HA9B ont été signalés verts par le chantier
 Designer, avec leurs motifs exacts inchangés ; ce résultat ne valide pas HA11.
 

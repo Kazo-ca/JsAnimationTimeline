@@ -53,12 +53,8 @@ compatibles ; un identifiant de projection commun ne suffit pas à les fusionner
 
 ## État
 
-Pause explicite demandée par Benoit le 1er novembre 2026. Le code et ses tests
-sont sauvegardés localement ; aucune vérification complète ni livraison HA11.
-`npm ci`, lint, typecheck et 4 205 tests JavaScript sont verts. Builds, navigateurs,
-.NET et packaging restent à exécuter. Lire `doc/v2/todo/PAUSE-2026-11-01.md`
-avant toute reprise. Le contrat `HA11-SPATIAL-PROJECTION/1` reste non livré dans
-`doc/integration/timeline-ha11-spatial-api.md`.
+Pause du 1er novembre 2026 levée par Benoit. Vérification complète terminée, voir
+`doc/v2/todo/ha11-validation.md`. Contrat : `doc/integration/timeline-ha11-spatial-api.md`.
 
 ## Cas ajoutés par les revues
 
