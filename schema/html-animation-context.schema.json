@@ -25,7 +25,12 @@
       "propertyNames": { "$ref": "#/$defs/MapKey" },
       "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/Gradient" } }
     },
-    "resolutions": { "type": "array", "items": { "$ref": "#/$defs/Resolution" } }
+    "resolutions": { "type": "array", "items": { "$ref": "#/$defs/Resolution" } },
+    "spatial": {
+      "description": "Versioned source-relative spatial projection definitions, by layer id.",
+      "type": "object", "propertyNames": { "$ref": "#/$defs/MapKey" },
+      "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/Spatial" } }
+    }
   },
   "$defs": {
     "MapKey": {
@@ -51,6 +56,7 @@
       "oneOf": [
         { "$ref": "#/$defs/StyleBinding" },
         { "$ref": "#/$defs/TransformBinding" },
+        { "$ref": "#/$defs/SpatialBinding" },
         { "$ref": "#/$defs/GradientGeometryBinding" },
         { "$ref": "#/$defs/GradientStopBinding" }
       ]
@@ -126,6 +132,61 @@
           "contains": { "type": "object", "required": ["present"], "properties": { "present": { "const": true } } },
           "minContains": 2
         }
+      }
+    },
+    "SpatialLengthUnit": { "enum": ["px", "%", "em", "rem", "vw", "vh"] },
+    "SpatialAngleUnit": { "enum": ["deg", "rad", "turn"] },
+    "SpatialBinding": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "projectionId", "component"],
+      "properties": {
+        "kind": { "const": "spatial" }, "projectionId": { "$ref": "#/$defs/StableId" },
+        "component": { "enum": ["translateX", "translateY", "rotation", "scaleX", "scaleY", "pivotX", "pivotY", "sourceTransform"] },
+        "unit": { "type": "string" }
+      },
+      "oneOf": [
+        { "required": ["unit"], "properties": { "component": { "enum": ["translateX", "translateY", "pivotX", "pivotY"] }, "unit": { "$ref": "#/$defs/SpatialLengthUnit" } } },
+        { "required": ["unit"], "properties": { "component": { "const": "rotation" }, "unit": { "$ref": "#/$defs/SpatialAngleUnit" } } },
+        { "not": { "required": ["unit"] }, "properties": { "component": { "enum": ["scaleX", "scaleY", "sourceTransform"] } } }
+      ]
+    },
+    "SpatialCoordinate": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["value", "unit"], "properties": { "value": { "type": "number" }, "unit": { "$ref": "#/$defs/SpatialLengthUnit" } } },
+        { "type": "object", "additionalProperties": false, "required": ["css"], "properties": { "css": { "type": "string", "minLength": 1, "maxLength": 16384 } } }
+      ]
+    },
+    "SpatialSourceCapture": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "computedValue"],
+      "properties": { "kind": { "enum": ["authored", "computed"] }, "authoredValue": { "type": "string" }, "computedValue": { "type": "string" } }
+    },
+    "SpatialConversion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "property", "confirmedAtFrame", "originalValue", "replacementValue", "reason", "consent"],
+      "properties": {
+        "id": { "$ref": "#/$defs/StableId" }, "property": { "$ref": "#/$defs/StableId" },
+        "confirmedAtFrame": { "type": "integer", "minimum": 1 },
+        "originalValue": { "type": "string" }, "replacementValue": { "type": "string" },
+        "reason": { "enum": ["source-unavailable", "unit-replacement"] }, "consent": { "const": "explicit" }
+      }
+    },
+    "Spatial": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "composition", "sourceTransform", "origin", "provenance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/StableId" }, "version": { "const": 1 }, "composition": { "const": "prepend-trs" },
+        "sourceTransform": { "type": "string", "minLength": 1, "maxLength": 16384 },
+        "origin": {
+          "type": "object", "additionalProperties": false, "required": ["x", "y", "z"],
+          "properties": {
+            "x": { "$ref": "#/$defs/SpatialCoordinate" }, "y": { "$ref": "#/$defs/SpatialCoordinate" },
+            "z": { "allOf": [{ "$ref": "#/$defs/SpatialCoordinate" }, { "not": { "type": "object", "required": ["unit"], "properties": { "unit": { "const": "%" } } } }] }
+          }
+        },
+        "provenance": {
+          "type": "object", "additionalProperties": false, "required": ["transform", "origin"],
+          "properties": { "transform": { "$ref": "#/$defs/SpatialSourceCapture" }, "origin": { "$ref": "#/$defs/SpatialSourceCapture" } }
+        },
+        "conversions": { "type": "array", "items": { "$ref": "#/$defs/SpatialConversion" } }
       }
     },
     "Resolution": {

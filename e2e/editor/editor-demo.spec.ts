@@ -169,6 +169,8 @@ test('dragging and deleting a content key are each undoable', async ({ page }) =
   await page.evaluate(() => window.editorDemo?.getService('frames.selection')?.select({ rowId: 'orb', frame: 15 }));
   await page.getByRole('button', { name: 'Ajouter une image clé', exact: true }).click();
   const inserted = await page.evaluate(() => window.editorDemo?.toJSON());
+  // Mouse coordinates only reach what is on screen, however long the demo links get.
+  await page.evaluate(() => window.editorDemo?.getService('frames.grid')?.element()?.scrollIntoView({ block: 'center' }));
   const point = (frame: number) => page.evaluate((frame) => {
     const editor = window.editorDemo;
     const grid = editor?.getService('frames.grid');

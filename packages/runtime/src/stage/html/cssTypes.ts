@@ -1,5 +1,6 @@
 // packages/runtime/src/stage/html/cssTypes.ts
 import type { TimelinePropertyValue } from '../../model/propertyTimeline';
+import type { HtmlSpatialBinding } from './spatialTypes';
 
 export type HtmlTransformComponent = 'x' | 'y' | 'rotation' | 'scaleX' | 'scaleY' | 'skewX' | 'skewY';
 export type HtmlGradientComponent = 'type' | 'angle' | 'centerX' | 'centerY' | 'radiusX' | 'radiusY'
@@ -7,6 +8,7 @@ export type HtmlGradientComponent = 'type' | 'angle' | 'centerX' | 'centerY' | '
 
 /** Serializable association; CSS knowledge stays outside generic timeline values. */
 export type HtmlPropertyBinding =
+  | HtmlSpatialBinding
   | { readonly kind: 'style'; readonly cssName: string; readonly unit?: string }
   | { readonly kind: 'transform'; readonly component: HtmlTransformComponent }
   | { readonly kind: 'gradient'; readonly gradientId: string; readonly component: HtmlGradientComponent; readonly stopId?: string };

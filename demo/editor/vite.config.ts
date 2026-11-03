@@ -22,6 +22,7 @@ export default defineConfig({
     hostRendering: fileURLToPath(new URL('host-rendering.html', import.meta.url)),
     finalCandidateConflicts: fileURLToPath(new URL('final-candidate-conflicts.html', import.meta.url)),
     historyRefusals: fileURLToPath(new URL('history-refusals.html', import.meta.url)),
+    spatialProjection: fileURLToPath(new URL('spatial-projection.html', import.meta.url)),
     playbackExports: fileURLToPath(new URL('playback-exports.html', import.meta.url)),
     cssExports: fileURLToPath(new URL('css-exports.html', import.meta.url))
   } } },

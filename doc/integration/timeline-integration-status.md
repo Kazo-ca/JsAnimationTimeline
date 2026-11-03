@@ -1,7 +1,7 @@
 <!-- doc/integration/timeline-integration-status.md -->
 # Raccordement réel de HtmlAnimation à la Timeline
 
-Ce document accompagne le contrat HA-TL-001 r2 et les API HA1 à HA10. Il permet
+Ce document accompagne le contrat HA-TL-001 r2 et les API HA1 à HA11. Il permet
 au chantier HtmlAnimation d'avancer sans accès à la conversation Timeline.
 
 ## Référence de travail
@@ -44,8 +44,15 @@ d'undo/redo avec le renderer hôte. Voir `timeline-ha9b-history-refusals-api.md`
 et `doc/v2/todo/ha9-history-refusals.md` pour son état ; il ne faut pas le déduire
 des archives HA9 ou HA10 déjà remises.
 Référence HA9B vérifiée : `6d19da1f75af53e902b86164ce4cfb8003cef465`,
-[PR #132](https://github.com/Kazo-ca/JsAnimationTimeline/pull/132), non fusionnée.
+[PR #132](https://github.com/Kazo-ca/JsAnimationTimeline/pull/132), fusionnée dans `v2/base`.
 Archives et résultats : `doc/v2/todo/ha9b-validation.md`.
+HA11 implémente la projection spatiale commune sur
+`v2/HA11-shared-spatial-projection`. Son contrat est
+`HA11-SPATIAL-PROJECTION/1` dans `timeline-ha11-spatial-api.md`.
+Référence vérifiée : `2b920f1123458b2ddd80d5c726eb1b11047e1d82`.
+Archives et résultats : `doc/v2/todo/ha11-validation.md`.
+Les deux tests consommateurs de refus HA9B ont été signalés verts par le chantier
+Designer, avec leurs motifs exacts inchangés ; ce résultat ne valide pas HA11.
 
 Ces changements ne désignent pas une nouvelle version publiée. Le numéro de
 version des archives locales ne suffit pas à identifier ce code. Utiliser le
@@ -67,6 +74,7 @@ packages actuellement disponibles sur npm/NuGet possèdent ces interfaces.
 | JSON/JavaScript pour le DOM | `compileHtmlPlayback`, `parseHtmlPlayback`, `createHtmlPlaybackPlayer`, `exportHtmlJavascript` ; HA5. |
 | CSS accepté ou refus global | `exportHtmlCss` avec scène et contexte HTML ; HA6. |
 | Points de dégradé qui se croisent | Tri stable au rendu par position évaluée ; identifiants et données conservés ; HA7. |
+| Ajustements spatiaux sur une source conservée | Binding `spatial`, compositeur partagé et pivots indépendants ; HA11, vérifier son état de livraison. |
 | Structure, contexte, clés et effet HTML dans une annulation | `editor.transactions.execute`, même historique que HA2 ; HA8. |
 | Designer seul responsable du rendu HTML | `createHtmlInspectionStage` et son callback `preserveSource` ; HA8. |
 | Aperçu hôte déjà appliqué au premier observateur | `EditorOptions.hostRenderer.prepare(candidate)` ; HA9, échantillon et contextes candidats immuables, compensation avant notification. |

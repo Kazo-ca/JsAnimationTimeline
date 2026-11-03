@@ -21,6 +21,10 @@ export { resolveHtmlConflict, removeHtmlConflictResolution } from './conflicts';
 export { resolveHtmlBinding } from './cssBindings';
 export { readHtmlPropertyBase, captureHtmlTransformBase } from './cssBaseline';
 export { composeHtmlDeclarations } from './cssCompose';
+export type { HtmlSpatialLengthUnit, HtmlSpatialAngleUnit, HtmlSpatialCoordinate, HtmlSpatialBinding,
+  IHtmlSpatialDefinition, IHtmlSpatialSourceCapture, IHtmlSpatialConversion, IHtmlSpatialChange } from './spatialTypes';
+export { composeHtmlSpatial, resolveHtmlSpatialBindings } from './spatial';
+export { validateHtmlSpatialRebinding } from './spatialRebinding';
 export { withPreparedHtmlExport } from './exportPreparation';
 export type { IPrepareHtmlExportOptions, IPreparedHtmlExport } from './exportPreparation';
 export type { IHtmlResolvedTrajectory, IHtmlResolvedElementTrajectories } from './animationTypes';

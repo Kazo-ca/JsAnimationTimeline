@@ -9,6 +9,7 @@ import { htmlGradientValueKind, resolveHtmlBinding } from './cssBindings';
 import { composeHtmlDeclarations } from './cssCompose';
 import type { HtmlReadResult, HtmlTransformValues, IHtmlResolvedBinding } from './cssTypes';
 import { validateHtmlGradientTimeline } from './gradientTimelineValidation';
+import { captureHtmlSpatialGroupSource } from './spatialSource';
 
 export interface IHtmlPropertyInspection extends ITargetPropertyInfo {
   readonly editable: boolean;
@@ -30,9 +31,10 @@ export class HtmlPropertyInspection {
   private bases = new WeakMap<Element, Map<string, HtmlReadResult<TimelinePropertyValue>>>();
   private transforms = new WeakMap<Element, HtmlReadResult<HtmlTransformValues>>();
   private backgrounds = new WeakMap<Element, string>();
+  private spatialSources = new WeakMap<Element, HtmlReadResult<string>>();
 
   reset(): void {
-    this.bases = new WeakMap(); this.transforms = new WeakMap(); this.backgrounds = new WeakMap();
+    this.bases = new WeakMap(); this.transforms = new WeakMap(); this.backgrounds = new WeakMap(); this.spatialSources = new WeakMap();
   }
 
   transform(element: Element): HtmlReadResult<HtmlTransformValues> {
@@ -49,14 +51,15 @@ export class HtmlPropertyInspection {
     if (elements.length === 0) return blocked('La cible ne correspond à aucun élément.');
     if (resolved.status !== 'value') return blocked(resolved.reason);
     const gradients = layerId === undefined ? [] : context.gradients?.[layerId] ?? [];
-    const key = JSON.stringify([resolved.value, gradients]);
+    const spatial = layerId === undefined ? [] : context.spatial?.[layerId] ?? [];
+    const key = JSON.stringify([resolved.value, gradients, spatial]);
     const values: TimelinePropertyValue[] = [];
     for (const element of elements) {
       let entries = this.bases.get(element);
       if (entries === undefined) { entries = new Map(); this.bases.set(element, entries); }
       let base = entries.get(key);
       if (base === undefined) {
-        base = readHtmlPropertyBase(element, resolved.value, gradients);
+        base = readHtmlPropertyBase(element, resolved.value, gradients, spatial);
         entries.set(key, base);
       }
       if (base.status !== 'value') return blocked(base.reason);
@@ -67,22 +70,32 @@ export class HtmlPropertyInspection {
         const transform = this.transform(element);
         if (transform.status !== 'value') return blocked(transform.reason);
       }
+      if (resolved.value.binding.kind === 'spatial' && elements.length > 1) {
+        let source = this.spatialSources.get(element);
+        if (source === undefined) { source = captureHtmlSpatialGroupSource(element); this.spatialSources.set(element, source); }
+        if (source.status !== 'value') return blocked(source.reason);
+      }
     }
     const differentBackground = resolved.value.binding.kind === 'gradient' &&
       elements.some((element) => this.backgrounds.get(element) !== this.backgrounds.get(elements[0]));
-    if (differentBackground || values.some((value) => !equal(value, values[0]))) {
+    const differentSpatialSource = resolved.value.binding.kind === 'spatial' &&
+      elements.some((element) => JSON.stringify(this.spatialSources.get(element)) !== JSON.stringify(this.spatialSources.get(elements[0])));
+    if (differentBackground || differentSpatialSource || values.some((value) => !equal(value, values[0]))) {
       return blocked('Les éléments possèdent des valeurs initiales différentes pour cette propriété. Attribuez un ID à chaque élément pour l’animer séparément.');
     }
     const integer = resolved.value.binding.kind === 'style' && INTEGER_CSS_PROPERTIES.has(resolved.value.binding.cssName);
+    const discreteSource = resolved.value.binding.kind === 'spatial' && resolved.value.binding.component === 'sourceTransform';
     return { name: property, memberCount: elements.length, editable: true,
       interpolable: !integer && (kind === 'number' || kind === 'color'), initialValue: { ...values[0] },
+      ...(discreteSource ? { reason: 'La source de transformation est un canal discret ; utilisez uniquement des clés de maintien.' } : {}),
       ...(integer ? { reason: 'Cette propriété CSS exige un entier. Utilisez des clés de maintien ; l’interpolation continue est indisponible.' } : {}) };
   }
 
   validate(layer: IHtmlResolvedLayer, property: string, track: IPropertyTimeline | undefined,
     context: IHtmlAnimationContext, registry: PropertyRegistry): string | undefined {
     const explicit = context.bindings?.[layer.layerId]?.[property];
-    const kind = track?.initialValue.kind ?? (explicit?.kind === 'gradient' ? htmlGradientValueKind(explicit.component) : undefined);
+    const kind = track?.initialValue.kind ?? (explicit?.kind === 'gradient' ? htmlGradientValueKind(explicit.component)
+      : explicit?.kind === 'spatial' ? explicit.component === 'sourceTransform' ? 'text' : 'number' : undefined);
     if (kind === undefined) return undefined;
     const binding = resolveHtmlBinding(property, kind, registry, explicit);
     if (binding.status !== 'value') return binding.reason;
@@ -90,13 +103,16 @@ export class HtmlPropertyInspection {
       return validateHtmlGradientTimeline(layer, property, track, binding.value, context, registry);
     }
     if (track === undefined) return undefined;
+    if (binding.value.binding.kind === 'spatial' && binding.value.binding.component === 'sourceTransform' && (track.transitions?.length ?? 0) > 0) {
+      return 'La source de transformation ne peut pas être interpolée ; utilisez des clés de maintien.';
+    }
     const values = [track.initialValue, ...track.keys.map((key) => key.value),
       ...(track.transitions ?? []).flatMap((transition) => transition.source?.keys.map((key) => key.value) ?? [])];
     for (const element of layer.elements) {
       const base = this.transform(element);
       for (const value of values) {
         const result = composeHtmlDeclarations(element, { [property]: value }, { [property]: binding.value },
-          context.gradients?.[layer.layerId] ?? [], base.status === 'value' ? base.value : undefined);
+          context.gradients?.[layer.layerId] ?? [], base.status === 'value' ? base.value : undefined, context.spatial?.[layer.layerId] ?? []);
         if (result.diagnostics.length > 0) return result.diagnostics[0].reason;
       }
     }
