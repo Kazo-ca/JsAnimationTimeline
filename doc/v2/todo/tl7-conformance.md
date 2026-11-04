@@ -78,3 +78,21 @@ Les tests existants restent des preuves d'appui ; aucun n'est modifié.
 - **D5 — C17 :** le Designer utilise-t-il le dialogue d'effets de la Timeline ou
   dessine-t-il sa propre courbe ? Dans le premier cas, le dialogue doit exposer
   ses points échantillonnés.
+
+## État au 4 novembre 2026
+
+- Suite réalisée : 28 tests Playwright sur paquets construits et 5 vérifications
+  Node sur archives. Tous les cas TL-C01 à TL-C18 passent ; aucun `test.fail()`.
+  Résultats et correspondance d'API : `doc/integration/timeline-conformance.md`.
+- Revues ECC générale et TypeScript : aucun constat bloquant. Les huit constats
+  moyens sont corrigés : garde contre un `dist` périmé, C17 comparé à des formes
+  littérales et au dialogue, titre de C09, nettoyage du banc.
+- Les archives produites depuis `b796743` sont identiques octet par octet à HA11.
+- Contrôle : lint, typecheck, 4 207 tests Jest et builds réussis. Suite e2e complète
+  sur `f0a4693` : 259 sur 259.
+- Dernier passage complet sur `ca5c5af` : 262 sur 263. Le test
+  `keeps the effect dialog accessible at 768px` a échoué sur un
+  `ERR_CONNECTION_REFUSED` du serveur de prévisualisation, puis a réussi trois fois
+  seul. Même symptôme que l'échec isolé noté pour HA11.
+- D1 (capacité hôte pour C09), D2 (G1/G2) et D5 (dialogue de C17) attendent la
+  décision de Benoit.
