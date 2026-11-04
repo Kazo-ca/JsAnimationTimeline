@@ -2,6 +2,8 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { IPropertyTimeline, ITimelineDocument, PropertyEasing, TimelinePropertyValue } from '@kazo-ca/timeline-runtime';
+import type { HtmlDocumentName, HtmlSceneKind, HtmlSceneSnapshot } from '../../demo/editor/src/conformance/scenes/html';
+import type { IRecordedFrames, IRefusedOutput } from '../../demo/editor/src/conformance/htmlTypes';
 import type { SerializableDescriptor } from '../../demo/editor/src/conformance/types';
 
 /**
@@ -530,3 +532,364 @@ for (const { name, easing } of OVERSHOOTS) {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// HTML stage and exports: TL-C06, TL-C13, TL-C14, TL-C15
+// ---------------------------------------------------------------------------
+
+const INTEGER_FRAMES = Array.from({ length: 100 }, (_, index) => index + 1);
+/** Every integer frame, in an order that jumps around: 37 is coprime with 100, so this is a permutation. */
+const SHUFFLED_FRAMES = INTEGER_FRAMES.map((_, index) => ((index * 37) % 100) + 1);
+/** Quarter frames from 1 to 100: the fractional grid of the continuous CSS output. */
+const QUARTER_FRAMES = Array.from({ length: 397 }, (_, index) => 1 + index / 4);
+const BUTTON_KEYS = [1, 2, 3, 4].map((index) => `button-${index}.opacity`);
+/** Case 59: 50 % for the group, 80 % for #button-2 from the very first frame. */
+const CASE_59: HtmlSceneSnapshot = { 'button-1.opacity': '0.5', 'button-2.opacity': '0.8', 'button-3.opacity': '0.5', 'button-4.opacity': '0.5' };
+/** Decimals kept by the continuous CSS output, per property (HA6). */
+const CSS_DECIMALS: Readonly<Record<string, number>> = { opacity: 4, left: 2 };
+
+type Output = IRecordedFrames | IRefusedOutput;
+
+function recorded(output: Output | undefined, label: string): IRecordedFrames {
+  if (output === undefined) throw new Error(`${label} : banc HTML indisponible.`);
+  if ('records' in output) return output;
+  throw new Error(`${label} refusé : ${output.diagnostics.map((entry) => entry.message).join(' ')}`);
+}
+
+async function openHtml(page: Page, scene: HtmlSceneKind, document: HtmlDocumentName | ITimelineDocument, context?: unknown): Promise<void> {
+  await page.evaluate(({ scene, document, context }) => {
+    window.tlConformance?.html.open({ scene, document, ...(context === undefined ? {} : { context }) } as never);
+  }, { scene, document, context });
+}
+
+function pick(snapshot: HtmlSceneSnapshot, keys: readonly string[]): HtmlSceneSnapshot {
+  return Object.fromEntries(keys.map((key) => [key, snapshot[key]]));
+}
+
+/** Exact outputs compare their computed strings; continuous outputs compare within the decimals the CSS keeps. */
+function expectSnapshot(actual: HtmlSceneSnapshot, expected: HtmlSceneSnapshot, label: string, tolerant: boolean): void {
+  expect(Object.keys(actual).sort(), label).toEqual(Object.keys(expected).sort());
+  for (const [key, value] of Object.entries(expected)) {
+    const decimals = CSS_DECIMALS[key.slice(key.indexOf('.') + 1)];
+    if (!tolerant || decimals === undefined) {
+      expect(actual[key], `${label} ${key}`).toBe(value);
+    } else {
+      expect(Math.abs(Number.parseFloat(actual[key]) - Number.parseFloat(value)), `${label} ${key}: ${actual[key]} / ${value}`).toBeLessThanOrEqual(0.5 * 10 ** -decimals + 1e-9);
+    }
+  }
+}
+
+function expectSameFrames(actual: IRecordedFrames, reference: IRecordedFrames, frames: readonly number[], label: string, tolerant = false): void {
+  for (const frame of frames) expectSnapshot(actual.records[String(frame)], reference.records[String(frame)], `${label} @${frame}`, tolerant);
+}
+
+interface IHtmlOutputs {
+  readonly seek: IRecordedFrames;
+  readonly linear: IRecordedFrames;
+  readonly json: IRecordedFrames;
+  readonly script: IRecordedFrames;
+  readonly css: IRecordedFrames;
+  readonly cssFractional: IRecordedFrames;
+  readonly resolvedFractional: IRecordedFrames;
+}
+
+/** Every output of the current HTML editor over the same frames; any refusal fails the case with its explanation. */
+async function collectOutputs(page: Page): Promise<IHtmlOutputs> {
+  const seek = await page.evaluate((frames) => window.tlConformance?.html.seekRecords(frames), SHUFFLED_FRAMES);
+  const linear = await page.evaluate(() => window.tlConformance?.html.linearRecords());
+  const json = await page.evaluate((frames) => window.tlConformance?.html.jsonRecords(frames), INTEGER_FRAMES);
+  const script = await page.evaluate((frames) => window.tlConformance?.html.scriptRecords(frames), INTEGER_FRAMES);
+  const css = await page.evaluate((frames) => window.tlConformance?.html.cssRecords(frames), INTEGER_FRAMES);
+  const cssFractional = await page.evaluate((frames) => window.tlConformance?.html.cssRecords(frames), QUARTER_FRAMES);
+  const resolvedFractional = await page.evaluate((frames) => window.tlConformance?.html.resolvedRecords(frames), QUARTER_FRAMES);
+  return {
+    seek: recorded(seek, 'accès direct'), linear: recorded(linear, 'lecture linéaire'), json: recorded(json, 'JSON'),
+    script: recorded(script, 'JavaScript'), css: recorded(css, 'CSS'), cssFractional: recorded(cssFractional, 'CSS fractionnaire'),
+    resolvedFractional: recorded(resolvedFractional, 'moteur de résolution')
+  };
+}
+
+/** The same state at every integer frame from every output, and at quarter frames from the continuous CSS. */
+function expectSameState(outputs: IHtmlOutputs, label: string): void {
+  expect(outputs.linear.frames, `${label} lecture linéaire`).toEqual(INTEGER_FRAMES);
+  expect(outputs.seek.frames).toEqual(SHUFFLED_FRAMES);
+  // Playback samples continuous time, a hair past each integer frame: numbers agree within the CSS decimals.
+  expectSameFrames(outputs.linear, outputs.seek, INTEGER_FRAMES, `${label} lecture linéaire`, true);
+  expectSameFrames(outputs.json, outputs.seek, INTEGER_FRAMES, `${label} JSON`);
+  expectSameFrames(outputs.script, outputs.seek, INTEGER_FRAMES, `${label} JavaScript`);
+  expectSameFrames(outputs.css, outputs.seek, INTEGER_FRAMES, `${label} CSS`, true);
+  expectSameFrames(outputs.cssFractional, outputs.resolvedFractional, QUARTER_FRAMES, `${label} CSS fractionnaire`, true);
+}
+
+test('TL-C06 — le cas groupe/ID donne 80 % au bouton spécifique dès l’image 1 et 50 % aux autres, sans clé ajoutée ni dialogue', async ({ page }) => {
+  await openHtml(page, 'main', 'reference');
+  const stageState = await page.evaluate(() => {
+    const handle = window.tlConformance?.html.current;
+    if (handle === undefined) throw new Error('Aucun éditeur HTML.');
+    const document = JSON.parse(JSON.stringify(handle.editor.document)) as ITimelineDocument;
+    return {
+      diagnostics: handle.stage.diagnostics.map(({ code, blocking }) => ({ code, blocking })),
+      resolutions: handle.stage.animationContext.resolutions ?? [],
+      document, canUndo: handle.editor.canUndo, events: handle.events.length
+    };
+  });
+  expect(stageState.diagnostics.filter(({ blocking }) => blocking)).toEqual([]);
+  expect(stageState.resolutions).toEqual([]);
+  expect(stageState.canUndo).toBe(false);
+  expect(stageState.events).toBe(0);
+  const layers = stageState.document.layers.flatMap((layer) => layer.type === 'layer' ? [layer] : []);
+  expect(layers.find((layer) => layer.id === 'specific')?.propertyTimelines?.opacity.keys.map(({ frame }) => frame)).toEqual([50]);
+  expect(layers.find((layer) => layer.id === 'buttons')?.propertyTimelines?.opacity.keys.map(({ frame }) => frame)).toEqual([1]);
+  const before = stageState.document;
+
+  const seeks = await page.evaluate(() => window.tlConformance?.html.seekRecords([20, 1, 49, 100]));
+  for (const frame of [20, 1, 49, 100]) expectSnapshot(pick(seeks?.records[String(frame)] ?? {}, BUTTON_KEYS), CASE_59, `accès direct @${frame}`, false);
+
+  const linear = recorded(await page.evaluate(() => window.tlConformance?.html.linearRecords()), 'lecture linéaire');
+  expect(linear.frames).toEqual(INTEGER_FRAMES);
+  for (const frame of INTEGER_FRAMES) expectSnapshot(pick(linear.records[String(frame)], BUTTON_KEYS), CASE_59, `lecture linéaire @${frame}`, false);
+
+  const json = recorded(await page.evaluate((frames) => window.tlConformance?.html.jsonRecords(frames), INTEGER_FRAMES), 'JSON');
+  const script = recorded(await page.evaluate((frames) => window.tlConformance?.html.scriptRecords(frames), INTEGER_FRAMES), 'JavaScript');
+  const css = recorded(await page.evaluate((frames) => window.tlConformance?.html.cssRecords(frames), QUARTER_FRAMES), 'CSS');
+  for (const frame of INTEGER_FRAMES) {
+    expectSnapshot(pick(json.records[String(frame)], BUTTON_KEYS), CASE_59, `JSON @${frame}`, false);
+    expectSnapshot(pick(script.records[String(frame)], BUTTON_KEYS), CASE_59, `JavaScript @${frame}`, false);
+  }
+  for (const frame of QUARTER_FRAMES) expectSnapshot(pick(css.records[String(frame)], BUTTON_KEYS), CASE_59, `CSS @${frame}`, true);
+
+  const after = await page.evaluate(() => {
+    const handle = window.tlConformance?.html.current;
+    return {
+      document: JSON.parse(JSON.stringify(handle?.editor.document)) as ITimelineDocument,
+      blocking: handle?.stage.diagnostics.filter(({ blocking }) => blocking).length,
+      resolutions: handle?.stage.animationContext.resolutions ?? [], canUndo: handle?.editor.canUndo, events: handle?.events.length
+    };
+  });
+  expect(after).toEqual({ document: before, blocking: 0, resolutions: [], canUndo: false, events: 0 });
+});
+
+test('TL-C13 — accès direct, lecture linéaire et exports donnent le même état, avec ou sans sélection', async ({ page }) => {
+  const runs: { selection: string[]; outputs: IHtmlOutputs }[] = [];
+  for (const selection of [[], ['specific']]) {
+    await openHtml(page, 'main', 'full');
+    const selected = await page.evaluate((ids) => window.tlConformance?.html.current?.selectLayers(ids), selection);
+    expect(selected).toEqual(selection);
+    const outputs = await collectOutputs(page);
+    expectSameState(outputs, selection.length === 0 ? 'sans sélection' : 'calque spécifique sélectionné');
+    runs.push({ selection, outputs });
+    await page.evaluate(() => window.tlConformance?.dispose());
+  }
+  const [free, selected] = runs.map(({ outputs }) => outputs);
+  expect(selected.seek).toEqual(free.seek);
+  expect(selected.linear).toEqual(free.linear);
+  expect(selected.json).toEqual(free.json);
+  expect(selected.script).toEqual(free.script);
+  expect(selected.css).toEqual(free.css);
+  expect(selected.cssFractional).toEqual(free.cssFractional);
+
+  // The state itself is the one of the scene: case 59, a tween and a hold.
+  const at = (frame: number): HtmlSceneSnapshot => free.seek.records[String(frame)];
+  for (const frame of INTEGER_FRAMES) expectSnapshot(pick(at(frame), BUTTON_KEYS), CASE_59, `case 59 @${frame}`, false);
+  expect(at(1)['tile.opacity']).toBe('1');
+  expect(Number.parseFloat(at(45)['tile.opacity'])).toBeCloseTo(0.2 + 0.7 * (35 / 70), 6);
+  expect(Number.parseFloat(at(80)['tile.opacity'])).toBeCloseTo(0.9, 6);
+  expect(at(1)['tile.left']).toBe('8px');
+  expect(Number.parseFloat(at(43)['tile.left'])).toBeCloseTo(8 + 92 * (23 / 45), 3);
+  expect(at(65)['tile.left']).toBe('100px');
+  expect([at(39)['held.color'], at(39)['held.border']]).toEqual(['rgb(26, 104, 168)', 'solid']);
+  expect([at(40)['held.color'], at(40)['held.border']]).toEqual(['rgb(187, 76, 42)', 'dashed']);
+});
+
+function conflictState(page: Page) {
+  return page.evaluate(() => {
+    const state = window.tlConformance?.html.state();
+    if (state === undefined) throw new Error('Banc HTML indisponible.');
+    return state;
+  });
+}
+type ConflictState = Awaited<ReturnType<typeof conflictState>>;
+
+function conflictKeys(state: ConflictState, layerId: string): number[] | undefined {
+  const layer = state.document.layers.find((entry) => entry.id === layerId);
+  return layer?.type === 'layer' ? layer.propertyTimelines?.opacity.keys.map(({ frame }) => frame) : undefined;
+}
+/** Everything the history restores: the timeline, the saved HTML context and the blocking diagnostics. */
+function restorable(state: ConflictState) {
+  return { document: state.document, context: state.context, blocking: state.blocking };
+}
+
+/** Opacity of the conflict target at `frames`, by direct seek and by every HTML output. */
+async function conflictValues(page: Page, frames: readonly number[]): Promise<Record<string, Record<string, string>>> {
+  const read = (output: Output | undefined, label: string) => Object.fromEntries(
+    frames.map((frame) => [String(frame), recorded(output, label).records[String(frame)]['target.opacity']]));
+  return {
+    seek: read(await page.evaluate((list) => window.tlConformance?.html.seekRecords(list), frames), 'accès direct'),
+    json: read(await page.evaluate((list) => window.tlConformance?.html.jsonRecords(list), frames), 'JSON'),
+    script: read(await page.evaluate((list) => window.tlConformance?.html.scriptRecords(list), frames), 'JavaScript'),
+    css: read(await page.evaluate((list) => window.tlConformance?.html.cssRecords(list), frames), 'CSS')
+  };
+}
+
+test('TL-C14 — un conflit de même spécificité bloque les exports tant qu’il n’est pas résolu, puis le choix est mémorisé et réversible', async ({ page }) => {
+  await openHtml(page, 'conflict', 'conflict');
+  const conflict = await page.evaluate(() => window.tlConformance?.html.conflict());
+  expect(conflict).toMatchObject({ code: 'priority-conflict', blocking: true, property: 'opacity', fromFrame: 1, toFrame: 100 });
+  expect(conflict?.choices).toEqual(['first', 'second']);
+  expect(conflict?.targets).toEqual(['.first', '.second']);
+  expect(conflict?.message).not.toBe('');
+
+  // Neither the HTML playback nor the CSS accepts a conflict nobody has decided.
+  const playback = await page.evaluate(() => window.tlConformance?.html.playbackData());
+  expect(playback?.status).toBe('refused');
+  expect(playback?.diagnostics.map((entry) => (entry as { code: string }).code)).toContain('priority-conflict');
+  const refusedCss = await page.evaluate(() => window.tlConformance?.html.cssRecords([1]));
+  expect(refusedCss).toMatchObject({ status: 'refused', css: '', alternatives: ['javascript', 'json'] });
+  expect((refusedCss as IRefusedOutput).diagnostics.map(({ code }) => code)).toContain('priority-conflict');
+
+  // Cancelling is not sending the ticket; a ticket whose host guard expired is refused. Neither changes anything.
+  const initial = await conflictState(page);
+  expect(initial.blocking).toEqual(['priority-conflict']);
+  expect(initial.canUndo).toBe(false);
+  expect(await conflictState(page)).toEqual(initial);
+  const expired = await page.evaluate(() => window.tlConformance?.html.resolve({ winner: 'second', expired: true }));
+  expect(expired?.status).toBe('refused');
+  expect(await conflictState(page)).toEqual(initial);
+
+  // The decision alone: stored, nothing added to the timeline, one undo step.
+  const decided = await page.evaluate(() => window.tlConformance?.html.resolve({ winner: 'second' }));
+  expect(decided?.status).toBe('changed');
+  const afterDecision = await conflictState(page);
+  expect(afterDecision.document).toEqual(initial.document);
+  expect(afterDecision.context.resolutions).toHaveLength(1);
+  expect(afterDecision.context.resolutions?.[0].winnerLayerId).toBe('second');
+  expect(afterDecision.blocking).toEqual([]);
+  expect(afterDecision.canUndo).toBe(true);
+  expect(afterDecision.events).toBe(initial.events);
+
+  // A ticket is good once: sending it again after the decision is stale.
+  const stale = await page.evaluate(() => window.tlConformance?.html.retryLastResolution());
+  expect(stale?.status).toBe('refused');
+  expect(await conflictState(page)).toEqual(afterDecision);
+
+  const frames = [1, 20, 50, 100];
+  const decidedValues = await conflictValues(page, frames);
+  for (const [output, values] of Object.entries(decidedValues)) {
+    expect(values, output).toEqual({ 1: '0.7', 20: '0.7', 50: '0.7', 100: '0.7' });
+  }
+
+  // One undo removes the decision, the conflict comes back; one redo restores it.
+  expect(await page.evaluate(() => window.tlConformance?.html.current?.editor.undo())).toBe(true);
+  const undone = await conflictState(page);
+  expect(restorable(undone)).toEqual(restorable(initial));
+  expect([undone.canUndo, undone.canRedo]).toEqual([false, true]);
+  expect(await page.evaluate(() => window.tlConformance?.html.current?.editor.redo())).toBe(true);
+  const redone = await conflictState(page);
+  expect(restorable(redone)).toEqual(restorable(afterDecision));
+  expect([redone.canUndo, redone.canRedo]).toEqual([true, false]);
+
+  // Save, reopen from the saved document and context: the decision still drives the HTML outputs.
+  const saved = JSON.parse(JSON.stringify({ document: redone.document, context: redone.context })) as { document: ITimelineDocument; context: unknown };
+  await page.evaluate(() => window.tlConformance?.dispose());
+  await openHtml(page, 'conflict', saved.document, saved.context);
+  const reopened = await conflictState(page);
+  expect(reopened.blocking).toEqual([]);
+  expect(reopened.context).toEqual(saved.context);
+  const reopenedValues = await conflictValues(page, frames);
+  for (const [output, values] of Object.entries(reopenedValues)) {
+    expect(values, output).toEqual({ 1: '0.7', 20: '0.7', 50: '0.7', 100: '0.7' });
+  }
+});
+
+test('TL-C14 — avec une clé annoncée, la clé n’existe qu’après confirmation, et une annulation retire la clé et la décision ensemble', async ({ page }) => {
+  await openHtml(page, 'conflict', 'conflict');
+  const initial = await conflictState(page);
+  expect(conflictKeys(initial, 'first')).toEqual([1]);
+
+  const key = { frame: 20, value: 0.5 };
+  const expired = await page.evaluate((announced) => window.tlConformance?.html.resolve({ winner: 'first', key: announced, expired: true }), key);
+  expect(expired?.status).toBe('refused');
+  const afterRefusal = await conflictState(page);
+  expect(afterRefusal).toEqual(initial);
+  expect(conflictKeys(afterRefusal, 'first')).toEqual([1]);
+
+  const decided = await page.evaluate((announced) => window.tlConformance?.html.resolve({ winner: 'first', key: announced }), key);
+  expect(decided?.status).toBe('changed');
+  const confirmed = await conflictState(page);
+  expect(conflictKeys(confirmed, 'first')).toEqual([1, 20]);
+  expect(conflictKeys(confirmed, 'second')).toEqual(conflictKeys(initial, 'second'));
+  expect(confirmed.context.resolutions?.map(({ winnerLayerId }) => winnerLayerId)).toEqual(['first']);
+  expect(confirmed.blocking).toEqual([]);
+
+  const stale = await page.evaluate(() => window.tlConformance?.html.retryLastResolution());
+  expect(stale?.status).toBe('refused');
+  expect(await conflictState(page)).toEqual(confirmed);
+
+  const frames = [1, 19, 20, 50, 100];
+  const expectedValues = { 1: '0.3', 19: '0.3', 20: '0.5', 50: '0.5', 100: '0.5' };
+  for (const [output, values] of Object.entries(await conflictValues(page, frames))) expect(values, output).toEqual(expectedValues);
+
+  // A single undo removes the key and the decision; a single redo gives both back.
+  expect(await page.evaluate(() => window.tlConformance?.html.current?.editor.undo())).toBe(true);
+  const undone = await conflictState(page);
+  expect(restorable(undone)).toEqual(restorable(initial));
+  expect(conflictKeys(undone, 'first')).toEqual([1]);
+  expect([undone.canUndo, undone.canRedo]).toEqual([false, true]);
+  expect(await page.evaluate(() => window.tlConformance?.html.current?.editor.redo())).toBe(true);
+  const redone = await conflictState(page);
+  expect(restorable(redone)).toEqual(restorable(confirmed));
+  expect(conflictKeys(redone, 'first')).toEqual([1, 20]);
+
+  const saved = JSON.parse(JSON.stringify({ document: redone.document, context: redone.context })) as { document: ITimelineDocument; context: unknown };
+  await page.evaluate(() => window.tlConformance?.dispose());
+  await openHtml(page, 'conflict', saved.document, saved.context);
+  expect((await conflictState(page)).blocking).toEqual([]);
+  for (const [output, values] of Object.entries(await conflictValues(page, frames))) expect(values, output).toEqual(expectedValues);
+});
+
+/** Every key of a JSON value, however deep. */
+function jsonKeys(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(jsonKeys);
+  if (typeof value !== 'object' || value === null) return [];
+  return Object.entries(value).flatMap(([name, inner]) => [name, ...jsonKeys(inner)]);
+}
+
+test('TL-C15 — le JSON générique ne contient aucune notion CSS, DOM ou XPath', async ({ page }) => {
+  await openGeneric(page, logoDocument({ opacity: opacityTween({ kind: 'effect', family: 'sine', mode: 'in' }), x: xTrack(key(10, 5), key(60, 30)) }));
+  const compiled = await page.evaluate(() => {
+    const handle = window.tlConformance;
+    const editor = handle?.current?.editor;
+    if (handle === undefined || editor === undefined) throw new Error('Aucun éditeur.');
+    const result = handle.runtime.compilePlayback(editor.document);
+    return { status: result.status, data: result.status === 'exported' ? JSON.parse(JSON.stringify(result.data)) as unknown : undefined };
+  });
+  expect(compiled.status).toBe('exported');
+  expect(jsonKeys(compiled.data).filter((name) => /css|dom|xpath|selector|style|html|element|class/i.test(name))).toEqual([]);
+  expect(JSON.stringify(compiled.data)).not.toMatch(/xpath|selector|css|<[a-z]/i);
+});
+
+test('TL-C15 — le JSON et le JavaScript HTML reproduisent l’aperçu aux images entières, et un effet élastique fait refuser le CSS', async ({ page }) => {
+  await openHtml(page, 'main', 'elastic');
+  const before = await conflictState(page);
+  const seek = recorded(await page.evaluate((frames) => window.tlConformance?.html.seekRecords(frames), SHUFFLED_FRAMES), 'accès direct');
+  const json = recorded(await page.evaluate((frames) => window.tlConformance?.html.jsonRecords(frames), INTEGER_FRAMES), 'JSON');
+  const script = recorded(await page.evaluate((frames) => window.tlConformance?.html.scriptRecords(frames), INTEGER_FRAMES), 'JavaScript');
+  expectSameFrames(json, seek, INTEGER_FRAMES, 'JSON');
+  expectSameFrames(script, seek, INTEGER_FRAMES, 'JavaScript');
+  const opacities = INTEGER_FRAMES.map((frame) => Number.parseFloat(seek.records[String(frame)]['tile.opacity']));
+  expect(opacities.some((value) => value > 0.9 + 1e-6), 'l’effet élastique dépasse la valeur finale').toBe(true);
+
+  const refused = await page.evaluate(() => window.tlConformance?.html.cssRecords([1, 50]));
+  expect(refused).toMatchObject({ status: 'refused' });
+  const output = refused as IRefusedOutput;
+  expect(output.css).toBe('');
+  expect(output.alternatives).toEqual(['javascript', 'json']);
+  expect(output.diagnostics.length).toBeGreaterThan(0);
+  for (const diagnostic of output.diagnostics) {
+    expect(typeof diagnostic.code).toBe('string');
+    expect(diagnostic.code).not.toBe('');
+    expect(typeof diagnostic.message).toBe('string');
+    expect(diagnostic.message).not.toBe('');
+  }
+  expect(await conflictState(page)).toEqual(before);
+});

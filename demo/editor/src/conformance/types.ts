@@ -4,6 +4,7 @@ import type * as exportCssModule from '@kazo-ca/timeline-export-css';
 import type * as runtimeModule from '@kazo-ca/timeline-runtime';
 import type { IEditor, PropertyChangedEvent } from '@kazo-ca/timeline-editor';
 import type { ITimelineDocument, IManualClock, TimelinePropertyValues } from '@kazo-ca/timeline-runtime';
+import type { IHtmlConformance } from './htmlTypes';
 
 /**
  * Host capability profile of the generic objects.
@@ -49,6 +50,8 @@ export interface ITlConformance {
   createGenericEditor(options: IGenericEditorOptions): IConformanceHandle;
   /** Editor with the default UI plugins and the properties panel, mounted in `#ui-host`. */
   createUiEditor(): IConformanceHandle;
+  /** HTML stage cases: reference case 59, tween and hold, conflicts, and every output. */
+  readonly html: IHtmlConformance;
   /** Frozen copies of the scenes. */
   scenes: { emptyGeneric(totalFrames?: number): ITimelineDocument; ui(): ITimelineDocument };
   dispose(): void;
