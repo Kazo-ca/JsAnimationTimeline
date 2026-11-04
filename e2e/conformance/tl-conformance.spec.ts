@@ -1,7 +1,7 @@
 // e2e/conformance/tl-conformance.spec.ts
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import type { IPropertyTimeline, ITimelineDocument, PropertyEasing, TimelinePropertyValue } from '@kazo-ca/timeline-runtime';
+import type { IHtmlAnimationContext, IPropertyTimeline, ITimelineDocument, PropertyEasing, TimelinePropertyValue } from '@kazo-ca/timeline-runtime';
 import type { HtmlDocumentName, HtmlSceneKind, HtmlSceneSnapshot } from '../../demo/editor/src/conformance/scenes/html';
 import type { IRecordedFrames, IRefusedOutput } from '../../demo/editor/src/conformance/htmlTypes';
 import type { SerializableDescriptor } from '../../demo/editor/src/conformance/types';
@@ -231,7 +231,7 @@ test('TL-C08 — un MotionTween exige exactement deux clés d’une même propri
   expect(timeline(await currentDocument(page), 'x')?.transitions?.map(({ fromFrame, toFrame }) => [fromFrame, toFrame])).toEqual([[1, 50]]);
 });
 
-test('TL-C09 — une édition qui invalide un tween est refusée sans détruire la transition existante', async ({ page }) => {
+test('TL-C09 — une édition qui invalide un tween est refusée par la capacité hôte sans détruire la transition', async ({ page }) => {
   await openGeneric(page, logoDocument({ opacity: opacityTween(), x: xTrack(key(1, 0), key(100, 50)) }), { host: 'tween-guard' });
   const before = await currentDocument(page);
   const outcome = await page.evaluate(() => {
@@ -480,11 +480,29 @@ test('TL-C17 — le choix d’un effet sur une transition donne une courbe et un
   }
 });
 
-test('TL-C17 — Échap dans le dialogue d’effet annule le choix sans modifier le document', async ({ page }) => {
+/** Closed forms written by hand, independent of `createPropertyEasingFunction`: x = 140 * f((frame - 1) / 99). */
+const LITERAL_CURVES: readonly { name: string; easing: PropertyEasing; value(t: number): number }[] = [
+  { name: 'power-in 3', easing: { kind: 'effect', family: 'power', mode: 'in', parameters: { power: 3 } }, value: (t) => 140 * t ** 3 },
+  { name: 'power-out 2', easing: { kind: 'effect', family: 'power', mode: 'out', parameters: { power: 2 } }, value: (t) => 140 * (1 - (1 - t) ** 2) },
+  { name: 'sine-in', easing: { kind: 'effect', family: 'sine', mode: 'in' }, value: (t) => 140 * (1 - Math.cos(t * Math.PI / 2)) }
+];
+
+for (const { name, easing, value } of LITERAL_CURVES) {
+  test(`TL-C17 — la courbe ${name} suit sa formule fermée écrite à la main`, async ({ page }) => {
+    await openGeneric(page, logoDocument({ x: { initialValue: num(0), keys: [key(1, 0), key(100, 140)], transitions: [fade('move', 1, 100)] } }));
+    const result = await page.evaluate((easing) => window.tlConformance?.current?.editor.propertyTimelines.setEasing('logo', 'x', 'move', easing), easing);
+    expect(result).toEqual({ status: 'changed' });
+    const actual = await samples(page, 'x', HALF_FRAMES);
+    HALF_FRAMES.forEach((frame, index) => { expect(actual[index], `${name} à l’image ${frame}`).toBeCloseTo(value((frame - 1) / 99), 9); });
+    expect(actual[0]).toBeCloseTo(0, 9);
+    expect(actual[actual.length - 1]).toBeCloseTo(140, 9);
+  });
+}
+
+async function openOrbEffectDialog(page: Page) {
   await openUi(page);
   await layerRow(page, 'orb').locator('.jt-layer-row__name').click();
   await page.locator('.jt-property-row[data-layer-id="orb"][data-property="x"]').click();
-  const before = await uiSnapshot(page);
   const row = page.locator('.jt-grid__row[data-layer-id="orb"][data-property="x"]');
   await expect(row).toBeVisible();
   const position = await row.evaluate((element) => {
@@ -495,6 +513,44 @@ test('TL-C17 — Échap dans le dialogue d’effet annule le choix sans modifier
   await page.getByRole('menuitem', { name: 'Modifier l’accélération', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Effet de l’interpolation', exact: true });
   await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+function orbAndCard(document: unknown) {
+  const layers = (document as ITimelineDocument).layers;
+  const byId = (id: string) => layers.find((layer) => layer.id === id);
+  const orb = byId('orb');
+  return { orb: orb?.type === 'layer' ? orb.propertyTimelines?.x : undefined, card: byId('card') };
+}
+
+test('TL-C17 — confirmer un effet dans le dialogue change l’accélération de la transition, en une seule entrée d’historique', async ({ page }) => {
+  const dialog = await openOrbEffectDialog(page);
+  const before = await uiSnapshot(page);
+  await dialog.getByRole('combobox', { name: 'Famille', exact: true }).selectOption('power');
+  await dialog.getByRole('combobox', { name: 'Mode', exact: true }).selectOption('in');
+  await dialog.getByRole('spinbutton', { name: 'Puissance', exact: true }).fill('3');
+  await dialog.getByRole('button', { name: 'Appliquer', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const after = await uiSnapshot(page);
+  const changed = orbAndCard(after.document);
+  const original = orbAndCard(before.document);
+  expect(changed.orb?.transitions).toHaveLength(1);
+  expect(changed.orb?.transitions?.[0].easing).toEqual({ kind: 'effect', family: 'power', mode: 'in', parameters: { power: 3 } });
+  expect(changed.orb?.transitions?.[0].easing).not.toEqual(original.orb?.transitions?.[0].easing);
+  expect(changed.orb?.keys).toEqual(original.orb?.keys);
+  expect(changed.card).toEqual(original.card);
+  expect(after.events).toBe(before.events + 1);
+  expect(after.canUndo).toBe(true);
+  await page.getByRole('button', { name: 'Annuler', exact: true }).click();
+  const undone = await uiSnapshot(page);
+  expect(undone.document).toEqual(before.document);
+  expect(undone.canUndo).toBe(false);
+  expect(undone.canRedo).toBe(true);
+});
+
+test('TL-C17 — Échap dans le dialogue d’effet annule le choix sans modifier le document', async ({ page }) => {
+  const dialog = await openOrbEffectDialog(page);
+  const before = await uiSnapshot(page);
   await dialog.getByRole('combobox', { name: 'Famille', exact: true }).selectOption('back');
   await dialog.getByRole('spinbutton', { name: 'Amplitude', exact: true }).fill('3');
   await page.keyboard.press('Escape');
@@ -556,10 +612,12 @@ function recorded(output: Output | undefined, label: string): IRecordedFrames {
   throw new Error(`${label} refusé : ${output.diagnostics.map((entry) => entry.message).join(' ')}`);
 }
 
-async function openHtml(page: Page, scene: HtmlSceneKind, document: HtmlDocumentName | ITimelineDocument, context?: unknown): Promise<void> {
-  await page.evaluate(({ scene, document, context }) => {
-    window.tlConformance?.html.open({ scene, document, ...(context === undefined ? {} : { context }) } as never);
-  }, { scene, document, context });
+async function openHtml(page: Page, scene: HtmlSceneKind, document: HtmlDocumentName | ITimelineDocument, context?: IHtmlAnimationContext): Promise<void> {
+  // The documents cross page.evaluate as JSON text: their element targets are not structurally serializable.
+  await page.evaluate((text) => {
+    const { scene, document, context } = JSON.parse(text) as { scene: HtmlSceneKind; document: HtmlDocumentName | ITimelineDocument; context?: IHtmlAnimationContext };
+    window.tlConformance?.html.open({ scene, document, ...(context === undefined ? {} : { context }) });
+  }, JSON.stringify({ scene, document, context }));
 }
 
 function pick(snapshot: HtmlSceneSnapshot, keys: readonly string[]): HtmlSceneSnapshot {
@@ -789,7 +847,7 @@ test('TL-C14 — un conflit de même spécificité bloque les exports tant qu’
   expect([redone.canUndo, redone.canRedo]).toEqual([true, false]);
 
   // Save, reopen from the saved document and context: the decision still drives the HTML outputs.
-  const saved = JSON.parse(JSON.stringify({ document: redone.document, context: redone.context })) as { document: ITimelineDocument; context: unknown };
+  const saved = JSON.parse(JSON.stringify({ document: redone.document, context: redone.context })) as { document: ITimelineDocument; context: IHtmlAnimationContext };
   await page.evaluate(() => window.tlConformance?.dispose());
   await openHtml(page, 'conflict', saved.document, saved.context);
   const reopened = await conflictState(page);
@@ -840,7 +898,7 @@ test('TL-C14 — avec une clé annoncée, la clé n’existe qu’après confirm
   expect(restorable(redone)).toEqual(restorable(confirmed));
   expect(conflictKeys(redone, 'first')).toEqual([1, 20]);
 
-  const saved = JSON.parse(JSON.stringify({ document: redone.document, context: redone.context })) as { document: ITimelineDocument; context: unknown };
+  const saved = JSON.parse(JSON.stringify({ document: redone.document, context: redone.context })) as { document: ITimelineDocument; context: IHtmlAnimationContext };
   await page.evaluate(() => window.tlConformance?.dispose());
   await openHtml(page, 'conflict', saved.document, saved.context);
   expect((await conflictState(page)).blocking).toEqual([]);

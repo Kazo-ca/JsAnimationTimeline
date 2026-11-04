@@ -24,6 +24,8 @@ const LINEAR_EPSILON_MS = 1e-6;
  */
 const CSS_BOUNDARY_NUDGE_MS = 1e-6;
 
+interface IStandalonePlayer { seek(frame: number): void; destroy(): void }
+
 function node(id: string): HTMLElement {
   const found = document.getElementById(id);
   if (found === null) throw new Error(`Hôte #${id} manquant.`);
@@ -32,18 +34,18 @@ function node(id: string): HTMLElement {
 
 function openHtml(options: IHtmlOpenOptions, track: ITrackFn): IHtmlHandle {
   const kind: HtmlSceneKind = options.scene;
-  const document = typeof options.document === 'string' ? htmlDocument(options.document) : options.document;
+  const timelineDocument = typeof options.document === 'string' ? htmlDocument(options.document) : options.document;
   const sceneHost = node('html-scene-host');
   const scene = createHtmlScene(sceneHost.ownerDocument, kind);
   sceneHost.append(scene);
   const editorHost = node('html-ui-host');
   const clock = createManualClock();
   const stage = createEditorHtmlStage(editorHost, { root: scene, animationContext: options.context ?? htmlContextFor(kind) });
-  const editor = createEditor(editorHost, { data: document, stage, clock });
+  const editor = createEditor(editorHost, { data: timelineDocument, stage, clock });
   const events: PropertyChangedEvent[] = [];
   editor.on('property:changed', (event) => { events.push(event); });
   const handle: IHtmlHandle = {
-    editor, clock, events, stage, scene, kind,
+    handleKind: 'html', editor, clock, events, stage, scene, kind,
     objectValues: () => undefined,
     selectLayers(ids) {
       const selection = editor.getService('layers.selection');
@@ -51,26 +53,33 @@ function openHtml(options: IHtmlOpenOptions, track: ITrackFn): IHtmlHandle {
       selection.select(ids, 'replace');
       return selection.selected();
     },
-    dispose: () => { editor.destroy(); scene.remove(); }
+    dispose: () => { try { if (!editor.isDestroyed) editor.destroy(); } finally { scene.remove(); } }
   };
-  return track(handle) as IHtmlHandle;
+  return track(handle);
 }
 
 async function openFrameScene(kind: HtmlSceneKind): Promise<{ root: HTMLElement; dispose(): void }> {
   const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:absolute;left:-10000px;top:0;width:640px;height:480px;border:0';
-  document.body.append(frame);
-  await new Promise<void>((resolve, reject) => {
-    frame.addEventListener('load', () => resolve(), { once: true });
-    frame.addEventListener('error', () => reject(new Error('La scène isolée ne peut pas être chargée.')), { once: true });
+  try {
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:absolute;left:-10000px;top:0;width:640px;height:480px;border:0';
+    const loaded = new Promise<void>((resolve, reject) => {
+      frame.addEventListener('load', () => resolve(), { once: true });
+      frame.addEventListener('error', () => reject(new Error('La scène isolée ne peut pas être chargée.')), { once: true });
+    });
+    // srcdoc is set before the frame joins the page, so no initial about:blank load can be mistaken for the scene.
     frame.srcdoc = '<!doctype html><html lang="fr"><head><meta charset="utf-8"></head><body style="margin:0"></body></html>';
-  });
-  const owner = frame.contentDocument;
-  if (owner === null) throw new Error('La scène isolée est inaccessible.');
-  const root = createHtmlScene(owner, kind);
-  owner.body.append(root);
-  return { root, dispose: () => { frame.remove(); } };
+    document.body.append(frame);
+    await loaded;
+    const owner = frame.contentDocument;
+    if (owner === null) throw new Error('La scène isolée est inaccessible.');
+    const root = createHtmlScene(owner, kind);
+    owner.body.append(root);
+    return { root, dispose: () => { frame.remove(); } };
+  } catch (error) {
+    frame.remove();
+    throw error;
+  }
 }
 
 function requireHandle(current: IHtmlHandle | undefined): IHtmlHandle {
@@ -134,31 +143,36 @@ async function jsonRecords(handle: IHtmlHandle, frames: readonly number[]): Prom
   if (compiled.status === 'refused') return refusal(compiled);
   const parsed = parseHtmlPlayback(JSON.parse(JSON.stringify(compiled.data)));
   const copy = await openFrameScene(handle.kind);
-  const player = createHtmlPlaybackPlayer(parsed, { root: copy.root });
+  let player: ReturnType<typeof createHtmlPlaybackPlayer> | undefined;
   try {
+    player = createHtmlPlaybackPlayer(parsed, { root: copy.root });
     const records: Record<string, HtmlSceneSnapshot> = {};
     for (const frame of frames) { player.seek(frame); records[recordKey(frame)] = readHtmlScene(copy.root, handle.kind); }
     return { records, frames: [...frames] };
-  } finally { player.destroy(); copy.dispose(); }
+  } finally { player?.destroy(); copy.dispose(); }
 }
-
-interface IStandalonePlayer { seek(frame: number): void; destroy(): void }
 
 /** HA5 JavaScript: the generated module is imported from a Blob URL and drives a fresh copy of the scene. */
 async function scriptRecords(handle: IHtmlHandle, frames: readonly number[]): Promise<IRecordedFrames | IRefusedOutput> {
   const compiled = compileFor(handle);
   if (compiled.status === 'refused') return refusal(compiled);
-  const url = URL.createObjectURL(new Blob([exportHtmlJavascript(compiled.data)], { type: 'text/javascript' }));
-  const copy = await openFrameScene(handle.kind);
+  let url: string | undefined;
+  let copy: { root: HTMLElement; dispose(): void } | undefined;
   try {
+    url = URL.createObjectURL(new Blob([exportHtmlJavascript(compiled.data)], { type: 'text/javascript' }));
+    copy = await openFrameScene(handle.kind);
+    const scene = copy.root;
     const module = await import(/* @vite-ignore */ url) as { createPlayer(options: { root: ParentNode }): IStandalonePlayer };
-    const player = module.createPlayer({ root: copy.root });
+    const player = module.createPlayer({ root: scene });
     try {
       const records: Record<string, HtmlSceneSnapshot> = {};
-      for (const frame of frames) { player.seek(frame); records[recordKey(frame)] = readHtmlScene(copy.root, handle.kind); }
+      for (const frame of frames) { player.seek(frame); records[recordKey(frame)] = readHtmlScene(scene, handle.kind); }
       return { records, frames: [...frames] };
     } finally { player.destroy(); }
-  } finally { URL.revokeObjectURL(url); copy.dispose(); }
+  } finally {
+    if (url !== undefined) URL.revokeObjectURL(url);
+    copy?.dispose();
+  }
 }
 
 /** Continuous CSS: paused animations of a fresh copy, moved to `currentTime = (frame - 1) * 1000 / fps`. */
@@ -186,8 +200,8 @@ async function cssRecords(handle: IHtmlHandle, frames: readonly number[]): Promi
   } finally { copy.dispose(); }
 }
 
-function layersOf(document: ITimelineDocument, root: ParentNode): IHtmlResolvedLayer[] {
-  return collectLayers(document).flatMap((layer) => {
+function layersOf(timelineDocument: ITimelineDocument, root: ParentNode): IHtmlResolvedLayer[] {
+  return collectLayers(timelineDocument).flatMap((layer) => {
     if (layer.target === undefined || !('selector' in layer.target)) return [];
     const { selector } = layer.target;
     return [{ layerId: layer.id, layer, target: { selector }, elements: Array.from(root.querySelectorAll(selector)) }];
@@ -203,8 +217,8 @@ function formatResolved(property: string, value: TimelinePropertyValue): string 
 /** The resolution engine evaluated at (possibly fractional) frames: the reference of the continuous CSS output. */
 function resolvedRecords(handle: IHtmlHandle, frames: readonly number[]): IRecordedFrames {
   return handle.stage.withSourceStyles(() => {
-    const document = handle.editor.document;
-    const plan = prepareHtmlResolution(document, layersOf(document, handle.scene), handle.stage.animationContext, defaultPropertyRegistry);
+    const timelineDocument = handle.editor.document;
+    const plan = prepareHtmlResolution(timelineDocument, layersOf(timelineDocument, handle.scene), handle.stage.animationContext, defaultPropertyRegistry);
     const records: Record<string, HtmlSceneSnapshot> = {};
     for (const frame of frames) {
       const entries: [string, string][] = [];

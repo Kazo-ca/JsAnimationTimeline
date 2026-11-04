@@ -6,6 +6,7 @@ import type { IConformanceHandle } from './types';
 
 /** An editor on a live HTML scene: the default UI plugins, an HTML stage in frame mode and a manual clock. */
 export interface IHtmlHandle extends IConformanceHandle {
+  readonly handleKind: 'html';
   readonly stage: IHtmlStage;
   readonly scene: HTMLElement;
   readonly kind: HtmlSceneKind;
@@ -60,7 +61,7 @@ export interface IConflictState {
   readonly events: number;
 }
 
-export type ITrackFn = (handle: IConformanceHandle) => IConformanceHandle;
+export type ITrackFn = <T extends IConformanceHandle>(handle: T) => T;
 
 export interface IHtmlConformance {
   /** Most recent HTML editor opened by `open`. */

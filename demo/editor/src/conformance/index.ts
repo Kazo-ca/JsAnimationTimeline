@@ -14,10 +14,12 @@ const handles: IConformanceHandle[] = [];
 let current: IConformanceHandle | undefined;
 let currentHtml: IHtmlHandle | undefined;
 
-function track(handle: IConformanceHandle): IConformanceHandle {
+function isHtmlHandle(handle: IConformanceHandle): handle is IHtmlHandle { return handle.handleKind === 'html'; }
+
+function track<T extends IConformanceHandle>(handle: T): T {
   handles.push(handle);
   current = handle;
-  if ('stage' in handle && 'scene' in handle) currentHtml = handle as IHtmlHandle;
+  if (isHtmlHandle(handle)) currentHtml = handle;
   return handle;
 }
 
@@ -32,9 +34,13 @@ const conformance: ITlConformance = {
   createUiEditor: () => track(createUiHandle()),
   scenes: { emptyGeneric: emptyGenericDocument, ui: uiDocument },
   dispose() {
-    handles.splice(0).forEach((handle) => { if (!handle.editor.isDestroyed) handle.dispose(); });
+    const failures: unknown[] = [];
+    for (const handle of handles.splice(0)) {
+      try { handle.dispose(); } catch (error) { failures.push(error); }
+    }
     current = undefined;
     currentHtml = undefined;
+    if (failures.length > 0) throw new Error(`La libération de ${failures.length} éditeur(s) a échoué : ${failures.map(String).join(' ; ')}`);
   }
 };
 window.tlConformance = conformance;

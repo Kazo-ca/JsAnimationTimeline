@@ -21,9 +21,16 @@ for (const archive of archives) assert.ok(existsSync(archive), `npm archive miss
 const consumer = String.raw`
 import assert from 'node:assert/strict';
 import { compilePlayback, evaluateLayer, parsePlayback, samplePlayback, validateDocument } from '@kazo-ca/timeline-runtime';
+import * as editorPackage from '@kazo-ca/timeline-editor';
+import * as exportCssPackage from '@kazo-ca/timeline-export-css';
 
 assert.equal(typeof document, 'undefined', 'the cases must run with no DOM');
 assert.equal(typeof window, 'undefined', 'the cases must run with no DOM');
+
+// The three archives are installed and imported: one public export of each editor and export-css must exist.
+assert.equal(typeof editorPackage.createEditor, 'function', 'timeline-editor must export createEditor');
+assert.equal(typeof exportCssPackage.exportHtmlCss, 'function', 'timeline-export-css must export exportHtmlCss');
+console.log('PASS packages: timeline-editor createEditor and timeline-export-css exportHtmlCss are exported, with no DOM');
 
 const num = (value) => ({ kind: 'number', value });
 const key = (frame, value) => ({ frame, value: num(value) });

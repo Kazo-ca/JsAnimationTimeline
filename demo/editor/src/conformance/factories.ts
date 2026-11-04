@@ -73,8 +73,8 @@ export function createGenericHandle(options: IGenericEditorOptions): IConformanc
   const registry = createPropertyRegistry((options.extraProperties ?? []).map(toDescriptor));
   const editor = createEditor(host, { data: options.document, stage, registry, clock, defaultPlugins: false });
   return {
-    editor, clock, events: observe(editor), objectValues: (layerId) => values.get(layerId),
-    dispose: () => { editor.destroy(); host.remove(); }
+    handleKind: 'generic', editor, clock, events: observe(editor), objectValues: (layerId) => values.get(layerId),
+    dispose: () => { try { if (!editor.isDestroyed) editor.destroy(); } finally { host.remove(); } }
   };
 }
 
@@ -90,5 +90,8 @@ export function createUiHandle(): IConformanceHandle {
     apply: (object, _numeric, state) => { values.set(object.id, state.propertyValues ?? {}); }
   });
   const editor = createEditor(host, { data: uiDocument(), stage, clock, plugins: [createPropertiesPanelPlugin()] });
-  return { editor, clock, events: observe(editor), objectValues: (layerId) => values.get(layerId), dispose: () => { editor.destroy(); } };
+  return {
+    handleKind: 'ui', editor, clock, events: observe(editor), objectValues: (layerId) => values.get(layerId),
+    dispose: () => { if (!editor.isDestroyed) editor.destroy(); }
+  };
 }

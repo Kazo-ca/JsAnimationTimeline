@@ -30,7 +30,11 @@ export interface SerializableDescriptor {
 }
 
 /** What a conformance case keeps of a live editor. */
+/** Which factory built a handle; `kind` is already taken by the scene kind of the HTML handles. */
+export type ConformanceHandleKind = 'generic' | 'ui' | 'html';
+
 export interface IConformanceHandle {
+  readonly handleKind: ConformanceHandleKind;
   readonly editor: IEditor;
   readonly clock: IManualClock;
   /** Every `property:changed` event, in order. */

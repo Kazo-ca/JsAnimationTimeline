@@ -117,9 +117,13 @@ de propriétés sont opaques et ne sont pas des identifiants de calques.
 
 ## Parcours de conformité réutilisables
 
+La preuve de référence, sur les paquets construits, est la suite
+`e2e/conformance/tl-conformance.spec.ts`. Ses résultats sont dans
+[timeline-conformance.md](timeline-conformance.md). Le tableau suivant liste des preuves d'appui.
+
 | Contrat | Parcours conservé dans Timeline |
 | --- | --- |
-| TL-C01 à C05, C07, C09, C10 | `e2e/validation/property-editing.spec.ts`, `property-keyframes.spec.ts` et tests de commandes par propriété. |
+| TL-C01 à C05, C07, C09, C10 | `e2e/validation/property-editing.spec.ts` et tests de commandes par propriété. `property-keyframes.spec.ts` utilise l'ancien chemin `setProperty` et ne prouve pas ce contrat. |
 | TL-C08, C11, C12, C17 | `e2e/validation/property-editor.spec.ts`, `property-editor-easing.spec.ts`. |
 | TL-C06, C13, C14 | Démo `html-properties.html`, tests de résolution HTML et parcours Playwright associés. |
 | TL-C15, C16 | Démo `playback-exports.html`, tests Node sans DOM, parseurs et import réel du module autonome. |

@@ -68,7 +68,7 @@ documents ne vaut ni livraison de package ni validation de l'intégration.
 | API actuelle de la Timeline inspectée | Snapshot `e90be9d5338b81ad644455c89ca64d22c526eb09` ; capacités et limites dans le contrat. |
 | API exacte du futur raccordement | Correspondance de méthodes/types à fournir par le chantier Timeline. |
 | Implémentation des garanties manquantes | Non réalisée par la préparation de cette passation. |
-| Tests de conformité du futur contrat | Non exécutés ; scénarios TL-C01 à TL-C16 à conserver. |
+| Tests de conformité du contrat | TL-C01 à TL-C18 exécutés sur les paquets construits : [timeline-conformance.md](timeline-conformance.md). |
 | HtmlAnimation au début de la passation | Clone existant avec sa licence ; aucune implémentation ajoutée ici. |
 | Nouvelle session Designer | Aucun chat créé ni message envoyé par cette passation. |
 
