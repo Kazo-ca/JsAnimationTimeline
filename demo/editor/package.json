@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite --configLoader runner",
-    "build:demo": "vite build --configLoader runner",
+    "build:demo": "vite build --configLoader runner && vite build --configLoader runner --config vite.conformance.config.ts",
     "preview:demo": "vite preview --configLoader runner",
     "typecheck": "tsc --noEmit"
   }
