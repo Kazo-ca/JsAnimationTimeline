@@ -25,7 +25,8 @@
     "lint": "eslint .",
     "test:e2e": "npm run e2e --workspace e2e",
     "test:validation": "npm run e2e --workspace e2e -- validation",
-    "test:packaging": "node tools/packaging/consumers.mjs"
+    "test:packaging": "node tools/packaging/consumers.mjs",
+    "test:conformance:node": "node tools/conformance/node-conformance.mjs"
   },
   "license": "MIT",
   "repository": {
