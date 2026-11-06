@@ -322,7 +322,7 @@ test('TL-C08 — G1 : un refus explique la propriété et la période concernée
   const structured = refusal as unknown as Record<string, unknown>;
   const reason = refusal?.status === 'refused' ? refusal.reason : '';
   const hasStructure = structured.property === 'opacity' && structured.fromFrame === 1 && structured.toFrame === 100;
-  const namesThem = reason.includes('opacity') && /b1b/.test(reason) && /b100b/.test(reason);
+  const namesThem = reason.includes('opacity') && /\b1\b/.test(reason) && /\b100\b/.test(reason);
   expect(hasStructure || namesThem, `Le refus « ${reason} » ne nomme ni la propriété ni la période.`).toBe(true);
 });
 

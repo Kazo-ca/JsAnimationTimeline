@@ -50,7 +50,7 @@ function declaredProperties(timelines: Record<string, IPropertyTimeline>, nonInt
 function entriesFor(
   document: ITimelineDocument, host: HostProfile, objects: Map<string, HostObject>, nonInterpolable: ReadonlySet<string>
 ): IObjectStageEntry<HostObject>[] {
-  return collectLayers(document).flatMap((layer) => {
+  return collectLayers(document).flatMap((layer): IObjectStageEntry<HostObject>[] => {
     if (layer.target === undefined || !('ref' in layer.target)) return [];
     const object: HostObject = { id: layer.id };
     objects.set(layer.id, object);
