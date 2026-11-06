@@ -69,15 +69,18 @@ Les tests existants restent des preuves d'appui ; aucun n'est modifié.
 
 ## Questions pour Benoit
 
-- **D1 — C09 :** scénario de référence. Dans le noyau générique, aucune édition ne
-  peut invalider un tween sans capacité hôte. Proposition : capacité hôte
-  `interpolable: false` ou `validate` en erreur.
-- **D2 — G1/G2 :** un motif texte suffit-il, ou faut-il un refus structuré
-  (propriété, période, gravité, avertissements) ? Le second est un changement
-  d'API, donc un lot à part.
-- **D5 — C17 :** le Designer utilise-t-il le dialogue d'effets de la Timeline ou
-  dessine-t-il sa propre courbe ? Dans le premier cas, le dialogue doit exposer
-  ses points échantillonnés.
+Réponses du 6 novembre 2026.
+
+- **D1 — C09 : oui.** En plus du test de règle `validate` de l'hôte, un second test
+  déclare la propriété `interpolable: false` après la création du tween. Les
+  éditions qui conserveraient ou créeraient un tween sont refusées avec un motif ;
+  la transition, l'historique et les événements restent inchangés.
+- **D2 — G1/G2 : non conformes, sans changement d'API.** Deux tests `test.fail()`
+  (`TL-C08 — G1`, `TL-C09 — G2`) documentent les écarts. Aucun lot d'API séparé.
+- **D5 — C17 : oui, le Designer utilise le dialogue d'effets de la Timeline.** Quatre
+  tests relisent la courbe tracée par le dialogue (puissance 3, élastique, retour,
+  rebond) et la comparent à `editor.sample`. Ils passent ; aucun changement sous
+  `packages/`.
 
 ## État au 4 novembre 2026
 
@@ -94,5 +97,5 @@ Les tests existants restent des preuves d'appui ; aucun n'est modifié.
   `keeps the effect dialog accessible at 768px` a échoué sur un
   `ERR_CONNECTION_REFUSED` du serveur de prévisualisation, puis a réussi trois fois
   seul. Même symptôme que l'échec isolé noté pour HA11.
-- D1 (capacité hôte pour C09), D2 (G1/G2) et D5 (dialogue de C17) attendent la
-  décision de Benoit.
+- Le 6 novembre 2026 : D1, D2 et D5 tranchées (voir ci-dessus). La suite compte
+  7 tests de plus, dont 2 `test.fail()` (G1, G2) qui échouent bien pour la raison attendue.

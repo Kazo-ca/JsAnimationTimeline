@@ -1,10 +1,10 @@
 // e2e/conformance/tl-conformance.spec.ts
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import type { IHtmlAnimationContext, IPropertyTimeline, ITimelineDocument, PropertyEasing, TimelinePropertyValue } from '@kazo-ca/timeline-runtime';
 import type { HtmlDocumentName, HtmlSceneKind, HtmlSceneSnapshot } from '../../demo/editor/src/conformance/scenes/html';
 import type { IRecordedFrames, IRefusedOutput } from '../../demo/editor/src/conformance/htmlTypes';
-import type { SerializableDescriptor } from '../../demo/editor/src/conformance/types';
+import type { HostProfile, SerializableDescriptor } from '../../demo/editor/src/conformance/types';
 
 /**
  * TL-C01..TL-C18 contract cases (section 9 of doc/integration/timeline-contract.md),
@@ -52,7 +52,7 @@ test.afterEach(async ({ page }) => {
 });
 
 /** Creates a generic editor on the page; it stays reachable as `window.tlConformance.current`. */
-async function openGeneric(page: Page, document: ITimelineDocument, options: { host?: 'open' | 'tween-guard'; extra?: SerializableDescriptor[] } = {}): Promise<void> {
+async function openGeneric(page: Page, document: ITimelineDocument, options: { host?: HostProfile; extra?: SerializableDescriptor[] } = {}): Promise<void> {
   await page.evaluate(({ text, host, extra }) => {
     window.tlConformance?.createGenericEditor({ document: JSON.parse(text), host, extraProperties: extra });
   }, { text: JSON.stringify(document), host: options.host, extra: options.extra });
@@ -261,6 +261,83 @@ test('TL-C09 — une édition qui invalide un tween est refusée par la capacit�
   const control = await page.evaluate(() => window.tlConformance?.current?.editor.propertyTimelines.set('logo', 'x', { kind: 'number', value: 25 }, { frame: 50 }));
   expect(control).toEqual({ status: 'changed' });
   expect(timeline(await currentDocument(page), 'opacity')).toEqual(timeline(before, 'opacity'));
+});
+
+test('TL-C09 — une propriété déclarée non interpolable par l’hôte refuse toute édition qui conserverait le tween, sans le détruire', async ({ page }) => {
+  const opacity: IPropertyTimeline = { initialValue: num(1), keys: [key(1, 0.2), key(50, 0.6), key(100, 1)] };
+  await openGeneric(page, logoDocument({ opacity, x: xTrack(key(1, 0), key(100, 50)) }), { host: 'declared' });
+  // The host still says "interpolable": the tween can be created.
+  const created = await page.evaluate(() => window.tlConformance?.current?.editor.propertyTimelines.createTransition('logo', 'opacity', [1, 50]));
+  expect(created).toEqual({ status: 'changed' });
+  const before = await currentDocument(page);
+  expect(timeline(before, 'opacity')?.transitions?.map(({ fromFrame, toFrame }) => [fromFrame, toFrame])).toEqual([[1, 50]]);
+
+  // The host then declares both properties non interpolable.
+  const outcome = await page.evaluate(() => {
+    const handle = window.tlConformance?.current;
+    const facade = handle?.editor.propertyTimelines;
+    handle?.declareNonInterpolable?.('opacity');
+    handle?.declareNonInterpolable?.('x');
+    const initial = handle?.editor.document;
+    const events = handle?.events.length;
+    return {
+      setOnTweenedKey: facade?.set('logo', 'opacity', { kind: 'number', value: 0.5 }, { frame: 1 }),
+      setInsideTween: facade?.set('logo', 'opacity', { kind: 'number', value: 0.5 }, { frame: 25 }),
+      moveKey: facade?.moveKey('logo', 'opacity', 50, 40),
+      createTransition: facade?.createTransition('logo', 'opacity', [50, 100]),
+      sameDocument: handle?.editor.document === initial,
+      canUndo: handle?.editor.canUndo, canRedo: handle?.editor.canRedo,
+      eventsUnchanged: handle?.events.length === events, eventCount: events
+    };
+  });
+  for (const name of ['setOnTweenedKey', 'setInsideTween', 'moveKey', 'createTransition'] as const) {
+    const result = outcome[name];
+    expect(result?.status, name).toBe('refused');
+    expect(result?.status === 'refused' ? result.reason : '', name).toContain('non interpolable');
+  }
+  expect(outcome.sameDocument).toBe(true);
+  expect(outcome.canUndo).toBe(true);
+  expect(outcome.canRedo).toBe(false);
+  expect(outcome.eventsUnchanged).toBe(true);
+  expect(outcome.eventCount).toBe(1);
+  const after = await currentDocument(page);
+  expect(after).toEqual(before);
+  expect(timeline(after, 'opacity')?.transitions?.map(({ fromFrame, toFrame }) => [fromFrame, toFrame])).toEqual([[1, 50]]);
+
+  // Held values stay editable: a key of a property without tween is written as usual.
+  const held = await page.evaluate(() => window.tlConformance?.current?.editor.propertyTimelines.set('logo', 'x', { kind: 'number', value: 25 }, { frame: 50 }));
+  expect(held).toEqual({ status: 'changed' });
+  const final = await currentDocument(page);
+  expect(timeline(final, 'x')?.keys).toEqual([key(1, 0), key(50, 25), key(100, 50)]);
+  expect(timeline(final, 'opacity')).toEqual(timeline(before, 'opacity'));
+});
+
+test('TL-C08 — G1 : un refus explique la propriété et la période concernées', async ({ page }) => {
+  // Non conformant today: a refusal is { status, reason } with a generic message (propertyTimelineTypes.ts:9),
+  // and a host diagnostic keeps only its message (operations.ts:49-50). See doc/integration/timeline-conformance.md, G1.
+  test.fail();
+  await openGeneric(page, logoDocument({ opacity: xTrack(key(1, 0), key(50, 0.5), key(100, 1)) }));
+  const refusal = await page.evaluate(() => window.tlConformance?.current?.editor.propertyTimelines.createTransition('logo', 'opacity', [1, 100]));
+  expect(refusal?.status).toBe('refused');
+  const structured = refusal as unknown as Record<string, unknown>;
+  const reason = refusal?.status === 'refused' ? refusal.reason : '';
+  const hasStructure = structured.property === 'opacity' && structured.fromFrame === 1 && structured.toFrame === 100;
+  const namesThem = reason.includes('opacity') && /b1b/.test(reason) && /b100b/.test(reason);
+  expect(hasStructure || namesThem, `Le refus « ${reason} » ne nomme ni la propriété ni la période.`).toBe(true);
+});
+
+test('TL-C09 — G2 : les avertissements de l’hôte restent observables après une réussite', async ({ page }) => {
+  // Non conformant today: non blocking host diagnostics are dropped on success (operations.ts:49-50;
+  // the result type has no diagnostics, propertyTimelineTypes.ts:9). See doc/integration/timeline-conformance.md, G2.
+  test.fail();
+  await openGeneric(page, logoDocument({ x: xTrack(key(1, 0), key(100, 50)) }), { host: 'warn' });
+  const outcome = await page.evaluate(() => {
+    const handle = window.tlConformance?.current;
+    const result = handle?.editor.propertyTimelines.set('logo', 'x', { kind: 'number', value: 25 }, { frame: 50 });
+    return JSON.stringify({ result, events: handle?.events });
+  });
+  expect((JSON.parse(outcome) as { result: { status: string } }).result.status).toBe('changed');
+  expect(outcome, 'L’avertissement de l’hôte n’apparaît ni dans le résultat ni dans les événements.').toContain('Avertissement de l’hôte');
 });
 
 test('TL-C10 — un geste X/Y modifie deux propriétés en une seule annulation, et son annulation ne laisse rien', async ({ page }) => {
@@ -560,6 +637,49 @@ test('TL-C17 — Échap dans le dialogue d’effet annule le choix sans modifier
   expect(after.canUndo).toBe(false);
   expect(after.events).toBe(0);
 });
+
+/** Normalized values drawn by the dialog, read back from the SVG path: x = 35 + i/200 * 305, y = 155 - (v - min)/(max - min) * 130. */
+async function drawnCurve(dialog: Locator): Promise<number[]> {
+  return dialog.locator('svg.jt-property-easing__graph').evaluate((svg) => {
+    const min = Number(svg.getAttribute('data-min'));
+    const max = Number(svg.getAttribute('data-max'));
+    const path = svg.querySelector('path.jt-property-easing__curve--0')?.getAttribute('d') ?? '';
+    return [...path.matchAll(/[ML]\s*(\S+)\s+(\S+)/g)].map((match) => min + ((155 - Number(match[2])) / 130) * (max - min));
+  });
+}
+
+/** The graph spans 130 px for (max - min); the path keeps double precision, so 1e-6 of a unit is far below a pixel. */
+const DRAWN_TOLERANCE = 1e-6;
+const DIALOG_EFFECTS: readonly { name: string; family: string; mode: string; fields: Record<string, string>; easing: PropertyEasing }[] = [
+  { name: 'power-in 3', family: 'power', mode: 'in', fields: { Puissance: '3' }, easing: { kind: 'effect', family: 'power', mode: 'in', parameters: { power: 3 } } },
+  { name: 'elastic', family: 'elastic', mode: 'out', fields: { Oscillations: '4', Tension: '3' }, easing: { kind: 'effect', family: 'elastic', mode: 'out', parameters: { oscillations: 4, springiness: 3 } } },
+  { name: 'back avec dépassement', family: 'back', mode: 'out', fields: { Amplitude: '2' }, easing: { kind: 'effect', family: 'back', mode: 'out', parameters: { amplitude: 2 } } },
+  { name: 'bounce', family: 'bounce', mode: 'out', fields: { Rebonds: '3', 'Rapport des rebonds': '2' }, easing: { kind: 'effect', family: 'bounce', mode: 'out', parameters: { bounces: 3, bounciness: 2 } } }
+];
+
+for (const { name, family, mode, fields, easing } of DIALOG_EFFECTS) {
+  test(`TL-C17 — la courbe dessinée par le dialogue (${name}) concorde avec le rendu de la transition appliquée`, async ({ page }) => {
+    const dialog = await openOrbEffectDialog(page);
+    await dialog.getByRole('combobox', { name: 'Famille', exact: true }).selectOption(family);
+    await dialog.getByRole('combobox', { name: 'Mode', exact: true }).selectOption(mode);
+    for (const [label, value] of Object.entries(fields)) await dialog.getByRole('spinbutton', { name: label, exact: true }).fill(value);
+    const drawn = await drawnCurve(dialog);
+    expect(drawn).toHaveLength(201);
+    await dialog.getByRole('button', { name: 'Appliquer', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const applied = await uiSnapshot(page);
+    expect(orbAndCard(applied.document).orb?.transitions?.[0].easing).toEqual(easing);
+    // The orb moves from 0 at frame 1 to 140 at frame 100: the rendering divided by 140 is the normalized curve.
+    const rendered = await page.evaluate(() => {
+      const editor = window.tlConformance?.current?.editor;
+      return Array.from({ length: 201 }, (_, index) => {
+        const value = editor?.sample(1 + (index / 200) * 99).layer('orb')?.propertyValues?.x;
+        return value?.kind === 'number' ? value.value / 140 : Number.NaN;
+      });
+    });
+    drawn.forEach((value, index) => { expect(Math.abs(value - rendered[index]), `${name} échantillon ${index}`).toBeLessThanOrEqual(DRAWN_TOLERANCE); });
+  });
+}
 
 const OVERSHOOTS: readonly { name: string; easing: PropertyEasing }[] = [
   { name: 'elastic', easing: { kind: 'effect', family: 'elastic', mode: 'out', parameters: { oscillations: 4, springiness: 3 } } },

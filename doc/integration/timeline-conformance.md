@@ -80,7 +80,7 @@ transactions de l'éditeur ajoutent `faulted`.
 
 ## Résultats
 
-Exécution du 4 novembre 2026 sur les paquets construits de `b796743`. Chromium
+Exécution du 6 novembre 2026 sur les paquets construits de `b796743`. Chromium
 seulement ; Firefox et WebKit ne sont pas couverts.
 
 | Cas | Résultat | Ce que le test vérifie |
@@ -92,8 +92,10 @@ seulement ; Firefox et WebKit ne sont pas couverts.
 | TL-C05 | Conforme | Valeurs littérales du contrat : 1 jusqu'à 49,875, 0,8 dès 50, seule clé `[50]`. |
 | TL-C06 | Conforme | Cas 59 : 0,8 pour le bouton spécifique dès l'image 1, 0,5 pour les autres. Mêmes valeurs en accès direct, lecture linéaire, JSON, JS et CSS ; aucune clé ni résolution ajoutée. |
 | TL-C07 | Conforme | Insertion dans un tween non linéaire : deux transitions distinctes, mouvement identique ; chaque moitié reste indépendante. |
-| TL-C08 | Conforme, voir écart G1 | Une, trois ou deux clés non voisines, ou une propriété texte, sont refusées sans effet ; deux clés voisines sont acceptées. |
-| TL-C09 | Conforme avec une capacité hôte | `set`, `moveKey` et `deleteKey` refusés sans toucher la transition ni l'historique. Le refus vient d'une règle de l'hôte : le noyau générique ne peut pas invalider un tween seul. |
+| TL-C08 | Conforme, sauf G1 | Une, trois ou deux clés non voisines, ou une propriété texte, sont refusées sans effet ; deux clés voisines sont acceptées. |
+| TL-C08 — G1 | **Non conforme** | Le refus d'une interpolation entre deux clés non voisines ne renvoie que `{ status: 'refused', reason }`. Le motif (« Une interpolation exige deux clés consécutives de la même propriété. ») ne nomme ni la propriété ni les images, et le résultat n'a aucun champ de propriété ou de période. Test `test.fail()`, échec confirmé sans le marqueur. |
+| TL-C09 | Conforme avec une capacité hôte, sauf G2 | Deux scénarios hôte. (1) Règle `validate` de l'hôte : `set`, `moveKey` et `deleteKey` refusés sans toucher la transition ni l'historique ; le noyau générique ne peut pas invalider un tween seul. (2) Propriété déclarée `interpolable: false` après la création du tween : `set` sur une clé du tween, `set` à l'intérieur, `moveKey` et `createTransition` sont refusés avec le motif de l'hôte ; transition identique, historique et événements inchangés ; un `set` sur une propriété sans tween reste accepté. |
+| TL-C09 — G2 | **Non conforme** | Un avertissement non bloquant renvoyé par `validate` d'un hôte n'apparaît ni dans le résultat `changed` ni dans l'événement `property:changed`. Test `test.fail()`, échec confirmé sans le marqueur. |
 | TL-C10 | Conforme | Geste X/Y en une seule annulation ; un geste annulé ne laisse aucune trace. |
 | TL-C11 | Conforme | Navigation et sélection mettent à jour le panneau sans édition, événement ni historique. |
 | TL-C12 | Conforme | Dépliage temporaire ; dépliage et repli manuels conservés. |
@@ -101,21 +103,25 @@ seulement ; Firefox et WebKit ne sont pas couverts.
 | TL-C14 | Conforme | Diagnostic bloquant, exports refusés ; décision explicite, annulable, mémorisée ; clé ajoutée seulement après confirmation ; ticket périmé refusé ; décision respectée après rechargement. |
 | TL-C15 | Conforme | JSON générique sans champ CSS, DOM ou XPath ; JSON et JS HTML fidèles à l'aperçu ; refus CSS global expliqué pour un effet élastique. |
 | TL-C16 | Conforme | Sauvegarde et réouverture identiques ; un JSON de lecture est refusé par `load` et par `validateDocument`. |
-| TL-C17 | Conforme, voir question D5 | Échantillons comparés à des valeurs littérales ; choix confirmé dans le dialogue en une annulation ; Échap sans effet. |
+| TL-C17 | Conforme | Échantillons comparés à des valeurs littérales ; choix confirmé dans le dialogue en une annulation ; Échap sans effet. Le Designer utilise le dialogue d'effets de la Timeline : pour puissance 3 en entrée, élastique, retour avec dépassement et rebond, la courbe tracée par le dialogue (201 points relus dans le SVG, `data-min` et `data-max` inversant l'échelle de 130 px) est comparée à `editor.sample` après application, divisé par l'amplitude de la transition. Tolérance 1e-6 en valeur normalisée : le tracé garde la précision des nombres JavaScript, l'écart est donc très inférieur à un pixel (un pixel vaut au moins 1/130 de l'étendue). Aucun attribut ajouté, aucun changement sous `packages/`. |
 | TL-C18 | Conforme | Insertion dans élastique, back, bounce et Bézier avec dépassement, avec et sans interpolateur personnalisé : mêmes valeurs à chaque 0,125 image. |
 
 ## Écarts et limites connus
 
-- **G1 — refus peu structurés.** Un refus d'édition ne renvoie qu'un motif texte
-  (`propertyTimelineTypes.ts:9`), sans propriété, période ni gravité structurées.
-  Le motif d'un diagnostic hôte est conservé, mais ses autres champs sont perdus
-  (`operations.ts:49-50`). Le contrat demande que le diagnostic explique la
-  propriété et la période. Décision attendue de Benoit.
-- **G2 — avertissements perdus.** Les avertissements non bloquants d'un hôte ne
-  sont pas exposés après une réussite (`operations.ts:49`).
-- **D5 — courbe du dialogue.** La concordance entre la courbe dessinée par le
-  dialogue de la Timeline et le rendu n'est vérifiée que si le Designer utilise
-  ce dialogue. Décision attendue de Benoit.
+- **G1 — refus peu structurés (non conforme confirmé).** Un refus d'édition ne
+  renvoie qu'un motif texte (`propertyTimelineTypes.ts:9`), sans propriété, période
+  ni gravité structurées. Le motif d'un diagnostic hôte est conservé, mais ses autres
+  champs sont perdus (`operations.ts:49-50`). Le contrat demande que le diagnostic
+  explique la propriété et la période. Décision de Benoit du 6 novembre 2026 :
+  écart constaté, sans changement d'API ; aucun lot d'API séparé n'est prévu.
+  Test : `TL-C08 — G1`.
+- **G2 — avertissements perdus (non conforme confirmé).** Les avertissements non
+  bloquants d'un hôte ne sont pas exposés après une réussite (`operations.ts:49-50`).
+  Décision de Benoit du 6 novembre 2026 : écart constaté, sans changement d'API ;
+  aucun lot d'API séparé n'est prévu. Test : `TL-C09 — G2`.
+- **C09 et C17, décisions du 6 novembre 2026.** C09 est aussi prouvé avec une
+  propriété déclarée non interpolable par l'hôte. C17 est prouvé sur le dialogue
+  d'effets de la Timeline, que le Designer utilise : sa courbe concorde avec le rendu.
 - **Frontière CSS.** La durée CSS est écrite avec 16 chiffres. Une clé de maintien
   tombe donc à environ 2e-13 ms de sa frontière d'image exacte. Le banc lit le CSS
   avec un décalage de 1 ns ; aucun lecteur réel ne peut percevoir cet écart.

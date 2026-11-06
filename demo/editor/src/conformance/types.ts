@@ -10,8 +10,10 @@ import type { IHtmlConformance } from './htmlTypes';
  * Host capability profile of the generic objects.
  * `open`: no capability metadata. `tween-guard`: every explicit transition present in the
  * initial document is protected by a host `validate` that refuses any edit invalidating it.
+ * `declared`: capabilities are re-read at each edit and `declareNonInterpolable` can flip a property later.
+ * `warn`: every property carries a host `validate` that only returns a warning.
  */
-export type HostProfile = 'open' | 'tween-guard';
+export type HostProfile = 'open' | 'tween-guard' | 'declared' | 'warn';
 
 export interface IGenericEditorOptions {
   readonly document: ITimelineDocument;
@@ -41,6 +43,8 @@ export interface IConformanceHandle {
   readonly events: readonly PropertyChangedEvent[];
   /** Values received by the host object of a layer at the last rendered frame. */
   objectValues(layerId: string): TimelinePropertyValues | undefined;
+  /** `declared` host only: from now on the host reports `property` as `interpolable: false`. */
+  declareNonInterpolable?(property: string): void;
   dispose(): void;
 }
 

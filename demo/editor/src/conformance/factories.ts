@@ -38,16 +38,32 @@ function tweenGuard(property: string, initial: IPropertyTimeline): (layerId: str
   };
 }
 
-function entriesFor(document: ITimelineDocument, host: HostProfile, objects: Map<string, HostObject>): IObjectStageEntry<HostObject>[] {
+const NON_INTERPOLABLE_REASON = 'Cette propriété est déclarée non interpolable par l’hôte.';
+const HOST_WARNING = 'Avertissement de l’hôte : valeur proche de la limite.';
+
+/** Properties whose capability is read at every `describe`, so the host may change it after the tween exists. */
+function declaredProperties(timelines: Record<string, IPropertyTimeline>, nonInterpolable: ReadonlySet<string>): ITargetPropertyInfo[] {
+  return Object.keys(timelines).map((name) => nonInterpolable.has(name)
+    ? { name, interpolable: false, reason: NON_INTERPOLABLE_REASON } : { name });
+}
+
+function entriesFor(
+  document: ITimelineDocument, host: HostProfile, objects: Map<string, HostObject>, nonInterpolable: ReadonlySet<string>
+): IObjectStageEntry<HostObject>[] {
   return collectLayers(document).flatMap((layer) => {
     if (layer.target === undefined || !('ref' in layer.target)) return [];
     const object: HostObject = { id: layer.id };
     objects.set(layer.id, object);
     const timelines = layer.propertyTimelines ?? {};
+    const base = { id: layer.target.ref, label: layer.name, object };
+    if (host === 'declared') return [{ ...base, get properties() { return declaredProperties(timelines, nonInterpolable); } }];
+    if (host === 'warn') {
+      return [{ ...base, properties: Object.keys(timelines).map((name) => ({ name, validate: () => [{ severity: 'warning' as const, message: HOST_WARNING, property: name }] })) }];
+    }
     const properties: ITargetPropertyInfo[] | undefined = host === 'open' ? undefined
       : Object.entries(timelines).map(([name, timeline]) => (timeline.transitions?.length ?? 0) > 0
         ? { name, validate: tweenGuard(name, timeline) } : { name });
-    return [{ id: layer.target.ref, label: layer.name, object, ...(properties === undefined ? {} : { properties }) }];
+    return [{ ...base, ...(properties === undefined ? {} : { properties }) }];
   });
 }
 
@@ -65,15 +81,17 @@ export function createGenericHandle(options: IGenericEditorOptions): IConformanc
   const clock = createManualClock();
   const values = new Map<string, TimelinePropertyValues>();
   const objects = new Map<string, HostObject>();
+  const nonInterpolable = new Set<string>();
   const stage = createObjectStage<HostObject>({
     id: 'conformance-objects', unscoped: true,
-    objects: entriesFor(options.document, options.host ?? 'open', objects),
+    objects: entriesFor(options.document, options.host ?? 'open', objects, nonInterpolable),
     apply: (object, _numeric, state) => { values.set(object.id, state.propertyValues ?? {}); }
   });
   const registry = createPropertyRegistry((options.extraProperties ?? []).map(toDescriptor));
   const editor = createEditor(host, { data: options.document, stage, registry, clock, defaultPlugins: false });
   return {
     handleKind: 'generic', editor, clock, events: observe(editor), objectValues: (layerId) => values.get(layerId),
+    declareNonInterpolable: (property) => { nonInterpolable.add(property); },
     dispose: () => { try { if (!editor.isDestroyed) editor.destroy(); } finally { host.remove(); } }
   };
 }
