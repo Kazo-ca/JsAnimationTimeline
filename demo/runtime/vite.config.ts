@@ -1,7 +1,7 @@
 // demo/runtime/vite.config.ts
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import { runtimePort } from '../../tools/devPorts';
+import { DEV_HOST, runtimePort } from '../../tools/devPorts';
 
 /**
  * Démo du runtime : lit le package depuis ses sources (pas de build préalable),
@@ -51,6 +51,6 @@ export default defineConfig({
       },
     },
   },
-  server: { port: RUNTIME_DEMO_PORT, strictPort: true },
-  preview: { port: RUNTIME_DEMO_PORT, strictPort: true },
+  server: { host: DEV_HOST, port: RUNTIME_DEMO_PORT, strictPort: true },
+  preview: { host: DEV_HOST, port: RUNTIME_DEMO_PORT, strictPort: true },
 });

@@ -1,7 +1,7 @@
 // packages/editor/vite.config.ts
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import { editorPort } from '../../tools/devPorts';
+import { DEV_HOST, editorPort } from '../../tools/devPorts';
 
 /** Le runtime reste une dépendance externe : il n'est jamais inclus dans le bundle de l'éditeur. */
 const RUNTIME_PACKAGE = /^@kazo-ca\/timeline-runtime(\/.*)?$/;
@@ -20,7 +20,7 @@ const RUNTIME_SOURCE_ALIAS = {
 // Serveur de dev sur `E2E_V2_EDITOR_PORT` (9002 par défaut, voir tools/devPorts.ts).
 export default defineConfig(({ command }) => ({
   resolve: command === 'serve' ? { alias: [RUNTIME_SOURCE_ALIAS] } : {},
-  server: { port: editorPort(), strictPort: true },
+  server: { host: DEV_HOST, port: editorPort(), strictPort: true },
   build: {
     lib: {
       entry: 'src/index.ts',
