@@ -5,13 +5,51 @@
  * valeur invalide.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   DEFAULT_EDITOR_PORT,
   DEFAULT_RUNTIME_PORT,
+  DEV_HOST,
+  devUrl,
   editorPort,
   portFromEnv,
   runtimePort
 } from '../../../devPorts';
+
+const REPO_ROOT = path.resolve(__dirname, '../../../..');
+const read = (file: string): string => fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
+
+// « localhost » peut désigner [::1] pour Vite et 127.0.0.1 pour Chromium :
+// un serveur qui n'écoute que sur l'un refuse alors des requêtes au hasard.
+describe('devPorts loopback host', () => {
+  it('binds and addresses the demos on one explicit IPv4 loopback', () => {
+    // Assert
+    expect(DEV_HOST).toBe('127.0.0.1');
+    expect(devUrl(9461)).toBe('http://127.0.0.1:9461');
+  });
+
+  it.each(['demo/editor/vite.config.ts', 'demo/runtime/vite.config.ts', 'packages/editor/vite.config.ts'])(
+    '%s serves on DEV_HOST', (file) => {
+      // Arrange
+      const config = read(file);
+
+      // Assert
+      expect(config).toMatch(/server: \{[^}]*host: DEV_HOST/);
+      if (file.startsWith('demo/')) expect(config).toMatch(/preview: \{[^}]*host: DEV_HOST/);
+    }
+  );
+
+  it('no e2e file addresses a demo server on localhost', () => {
+    // Arrange
+    const files = (fs.readdirSync(path.join(REPO_ROOT, 'e2e'), { recursive: true }) as string[])
+      .map((file) => path.join('e2e', file).split(path.sep).join('/'))
+      .filter((file) => file.endsWith('.ts') && !/\/(node_modules|test-results|playwright-report)\//.test(file));
+
+    // Assert
+    expect(files.filter((file) => /https?:\/\/localhost:/.test(read(file)))).toEqual([]);
+  });
+});
 
 describe('devPorts', () => {
   it('keeps 9002 and 9001 when nothing is set', () => {

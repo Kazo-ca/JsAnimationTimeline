@@ -4,7 +4,7 @@
  * Le port vient de `E2E_RUNTIME_PORT` (9001 par défaut), comme pour la
  * configuration Vite de la démo : voir tools/devPorts.ts.
  */
-import { runtimePort } from '../../tools/devPorts';
+import { devUrl, runtimePort } from '../../tools/devPorts';
 
 export const RUNTIME_DEMO_PORT = runtimePort();
-export const RUNTIME_DEMO_URL = `http://localhost:${RUNTIME_DEMO_PORT}`;
+export const RUNTIME_DEMO_URL = devUrl(RUNTIME_DEMO_PORT);

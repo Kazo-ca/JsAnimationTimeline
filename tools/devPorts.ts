@@ -20,6 +20,18 @@
  * déjà pris fait échouer le démarrage au lieu d'en choisir un autre.
  */
 
+/**
+ * Adresse d'écoute des démos et adresse visitée par Playwright. « localhost »
+ * peut désigner [::1] pour Vite et 127.0.0.1 pour Chromium : le serveur
+ * refusait alors des requêtes au hasard (ERR_CONNECTION_REFUSED).
+ */
+export const DEV_HOST = '127.0.0.1';
+
+/** URL d'une démo servie sur `port`, à l'adresse `DEV_HOST`. */
+export function devUrl(port: number): string {
+  return `http://${DEV_HOST}:${port}`;
+}
+
 /** Port par défaut de la démo de l'éditeur (demo/editor). */
 export const DEFAULT_EDITOR_PORT = 9002;
 

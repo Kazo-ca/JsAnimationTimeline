@@ -1,7 +1,7 @@
 // demo/editor/vite.config.ts
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import { editorPort } from '../../tools/devPorts';
+import { DEV_HOST, editorPort } from '../../tools/devPorts';
 
 const port = editorPort();
 export default defineConfig({
@@ -26,6 +26,6 @@ export default defineConfig({
     playbackExports: fileURLToPath(new URL('playback-exports.html', import.meta.url)),
     cssExports: fileURLToPath(new URL('css-exports.html', import.meta.url))
   } } },
-  server: { port, strictPort: true },
-  preview: { port, strictPort: true }
+  server: { host: DEV_HOST, port, strictPort: true },
+  preview: { host: DEV_HOST, port, strictPort: true }
 });
